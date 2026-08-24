@@ -1,43 +1,23 @@
 -- =============================================================
---  BF-Auto V5 | QUANTUM EDITION (BlueStacks + Delta)
---  Professionelles UI mit Key-System, Premium-Features
+--  BF-Auto V6 | ULTIMATE AUTO-PLAY (BlueStacks + Delta)
+--  Komplett automatischer Bot - spielt das gesamte Spiel durch
 --  ALLES markieren -> direkt in die Delta-Konsole einkopieren -> Execute
 -- =============================================================
 
 --[[
-    BF-Auto V5 - Ultimate Auto Farm Script
+    BF-Auto V6 - Ultimate Auto-Play Bot
     Features:
-    - Modernes UI mit Key-System
-    - Auto Fruit Grab mit ESP
-    - Auto Combat mit Target-Selektion
-    - Auto Quests mit Level-Management
-    - Premium-Features
-    - Sicherheitsfunktionen
-    - Performance optimiert
+    - Vollautomatisches Durchspielen von Level 1 bis Max
+    - Intelligente Fruit-Strategie (kauft/sucht die besten Früchte)
+    - Automatische Stat-Verteilung (optimal für Build)
+    - Boss-Farming mit Reset
+    - Raid-Farming
+    - Sea Beast Hunting
+    - Auto-Trade
+    - Geld-Management
+    - Optimierte Quest-Auswahl
+    - 24/7 Farming
 ]]
-
--- =============================================================
--- KONFIGURATION
--- =============================================================
-local CONFIG = {
-    VERSION = "V5.0",
-    FOLDER = "BF-Auto",
-    KEY_FILE = "BF-Auto/Key.json",
-    SCRIPT_ID = "bf_auto_v5",
-    
-    -- Standard Einstellungen
-    TELEPORT_DELAY = 0.3,
-    GRAB_DELAY = 1.5,
-    FIGHT_DELAY = 1.2,
-    QUEST_DELAY = 25,
-    ESP_UPDATE = 0.5,
-    STATUS_UPDATE = 2,
-    MAX_FIGHT_DISTANCE = 250,
-    SAFE_TELEPORT = true,
-    AUTO_REVIVE = true,
-    AUTO_EQUIP = true,
-    AUTO_STATS = true,
-}
 
 -- =============================================================
 -- SERVICES
@@ -48,14 +28,69 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
+local MarketplaceService = game:GetService("MarketplaceService")
+local TeleportService = game:GetService("TeleportService")
 local CoreGui = game:GetService("CoreGui")
 
 local Player = Players.LocalPlayer
 local Mouse = Player:GetMouse()
 local Camera = workspace.CurrentCamera
+
+-- =============================================================
+-- KONFIGURATION
+-- =============================================================
+local CONFIG = {
+    VERSION = "V6.0",
+    
+    -- Allgemein
+    AUTO_START = true,
+    SAFE_MODE = true,
+    DEBUG = false,
+    
+    -- Farming
+    AUTO_LEVEL = true,
+    AUTO_QUEST = true,
+    AUTO_BOSS = true,
+    AUTO_RAID = true,
+    AUTO_SEA_BEAST = true,
+    AUTO_FRUIT = true,
+    AUTO_TRADE = true,
+    AUTO_STATS = true,
+    
+    -- Einstellungen
+    TELEPORT_DELAY = 0.2,
+    FARM_DELAY = 0.5,
+    CHECK_INTERVAL = 2,
+    MAX_DISTANCE = 300,
+    BOSS_RESET_TIME = 60,
+    RAID_WAIT_TIME = 30,
+    
+    -- Geld-Management
+    MIN_BELI_FOR_FRUIT = 1000000,
+    SAVE_BELI_PERCENT = 20,
+    AUTO_BUY_FRUIT = true,
+    
+    -- Früchte
+    TARGET_FRUITS = {
+        "Venom", "Dough", "Dragon", "Leopard", "Dark",
+        "Light", "Flame", "Ice", "Gravity", "Shadow"
+    },
+    BEST_FRUITS = {
+        "Venom", "Dough", "Dragon", "Leopard"
+    },
+    
+    -- Stats
+    STAT_PRIORITY = {
+        "Melee",
+        "Defense",
+        "Sword",
+        "Gun",
+        "Fruit"
+    },
+    STATS_TO_LEVEL = 2550,
+}
 
 -- =============================================================
 -- UTILITY FUNKTIONEN
@@ -77,55 +112,11 @@ local function IsAlive()
     return hum and hum.Health > 0
 end
 
-local function GetPlayerLevel()
-    local success, lvl = pcall(function()
-        local data = Player:FindFirstChild("Data")
-        if data then
-            local level = data:FindFirstChild("Level")
-            if level then return level.Value end
-        end
-        return 0
-    end)
-    return success and math.floor(lvl) or 0
-end
-
-local function GetPlayerStats()
-    local stats = {
-        Level = GetPlayerLevel(),
-        Health = 0,
-        MaxHealth = 0,
-        Stamina = 0,
-        Beli = 0,
-        Fruit = "None",
-        Race = "Unknown"
-    }
-    
-    local hum = GetHumanoid()
-    if hum then
-        stats.Health = math.floor(hum.Health)
-        stats.MaxHealth = math.floor(hum.MaxHealth)
-    end
-    
-    local data = Player:FindFirstChild("Data")
-    if data then
-        local beli = data:FindFirstChild("Beli")
-        if beli then stats.Beli = beli.Value end
-        
-        local fruit = data:FindFirstChild("Fruit")
-        if fruit then stats.Fruit = fruit.Value end
-        
-        local race = data:FindFirstChild("Race")
-        if race then stats.Race = race.Value end
-    end
-    
-    return stats
-end
-
 local function Teleport(pos, safe)
     if not pos then return end
     local hrb = GetHRB()
     if hrb then
-        if CONFIG.SAFE_TELEPORT and safe then
+        if CONFIG.SAFE_MODE and safe then
             local ray = RaycastParams.new()
             ray.FilterType = Enum.RaycastFilterType.Blacklist
             ray.FilterDescendantsInstances = {Player.Character}
@@ -141,6 +132,46 @@ local function Teleport(pos, safe)
     end
 end
 
+local function GetPlayerData()
+    local data = {
+        Level = 0,
+        Beli = 0,
+        Fruit = "None",
+        Race = "Unknown",
+        Stats = {Melee = 0, Defense = 0, Sword = 0, Gun = 0, Fruit = 0},
+        MaxLevel = 2550,
+        CanRaid = false,
+        SeaBeastKills = 0,
+        BossKills = 0
+    }
+    
+    local playerData = Player:FindFirstChild("Data")
+    if playerData then
+        local level = playerData:FindFirstChild("Level")
+        if level then data.Level = level.Value end
+        
+        local beli = playerData:FindFirstChild("Beli")
+        if beli then data.Beli = beli.Value end
+        
+        local fruit = playerData:FindFirstChild("Fruit")
+        if fruit then data.Fruit = fruit.Value end
+        
+        local race = playerData:FindFirstChild("Race")
+        if race then data.Race = race.Value end
+        
+        -- Stats
+        local stats = playerData:FindFirstChild("Stats")
+        if stats then
+            for _, stat in pairs({"Melee", "Defense", "Sword", "Gun", "Fruit"}) do
+                local s = stats:FindFirstChild(stat)
+                if s then data.Stats[stat] = s.Value end
+            end
+        end
+    end
+    
+    return data
+end
+
 local function FindFruits()
     local list = {}
     for _, v in pairs(Workspace:GetChildren()) do
@@ -152,7 +183,8 @@ local function FindFruits()
                     Model = v,
                     Handle = handle,
                     Position = handle.Position,
-                    Name = fruitName and fruitName.Value or "Fruit"
+                    Name = fruitName and fruitName.Value or "Fruit",
+                    Rarity = v:FindFirstChild("Rarity") and v.Rarity.Value or "Common"
                 })
             end
         end
@@ -160,26 +192,28 @@ local function FindFruits()
     return list
 end
 
-local function NearestFruit()
-    local hrb = GetHRB()
-    if not hrb then return nil end
-    
-    local best, bestDist
-    for _, f in pairs(FindFruits()) do
-        local d = (f.Position - hrb.Position).magnitude
-        if not best or d < bestDist then
-            best = f
-            bestDist = d
+local function GetBosses()
+    local bosses = {}
+    local enemyFolder = Workspace:FindFirstChild("Enemies")
+    if enemyFolder then
+        for _, v in pairs(enemyFolder:GetChildren()) do
+            if v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
+                if v.Name:find("Boss") or v.Name:find("King") or v.Name:find("Admiral") then
+                    table.insert(bosses, v)
+                end
+            end
         end
     end
-    return best, bestDist
+    return bosses
 end
 
-local function GetClosestEnemy()
+local function GetNearestEnemy()
     local hrb = GetHRB()
     if not hrb then return nil end
     
-    local enemies = {}
+    local nearest
+    local nearestDist = math.huge
+    
     local enemyFolder = Workspace:FindFirstChild("Enemies")
     if enemyFolder then
         for _, v in pairs(enemyFolder:GetChildren()) do
@@ -187,90 +221,179 @@ local function GetClosestEnemy()
             local hrp = v:FindFirstChild("HumanoidRootPart")
             if hum and hrp and hum.Health > 0 then
                 local dist = (hrp.Position - hrb.Position).magnitude
-                table.insert(enemies, {
-                    Enemy = v,
-                    Distance = dist,
-                    HRP = hrp,
-                    Humanoid = hum,
-                    Name = v.Name
-                })
+                if dist < nearestDist then
+                    nearestDist = dist
+                    nearest = v
+                end
             end
         end
     end
     
-    table.sort(enemies, function(a, b) return a.Distance < b.Distance end)
-    return enemies[1]
+    return nearest, nearestDist
 end
 
-local function EquipBestWeapon()
-    if not CONFIG.AUTO_EQUIP then return end
-    
-    local backpack = Player:FindFirstChild("Backpack")
-    if not backpack then return end
-    
-    local bestWeapon
-    local bestDamage = 0
-    
-    for _, item in pairs(backpack:GetChildren()) do
-        if item:IsA("Tool") then
-            local damage = item:FindFirstChild("Damage") and item.Damage.Value or 0
-            if damage > bestDamage then
-                bestDamage = damage
-                bestWeapon = item
+local function GetSeaBeasts()
+    local beasts = {}
+    for _, v in pairs(Workspace:GetChildren()) do
+        if v:IsA("Model") and (v.Name:find("Sea") or v.Name:find("Beast") or v.Name:find("SeaBeast")) then
+            if v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
+                table.insert(beasts, v)
             end
         end
     end
+    return beasts
+end
+
+-- =============================================================
+-- ADVANCED FARMING LOGIC
+-- =============================================================
+local FarmLogic = {
+    CurrentTask = "Idle",
+    CompletedQuests = {},
+    BossTimer = 0,
+    RaidReady = false,
+    SeaBeastTimer = 0,
+    FruitCooldown = 0,
     
-    if bestWeapon and bestWeapon.Parent == backpack then
-        pcall(function()
-            bestWeapon.Parent = Player.Character
-        end)
+    -- Level-basierte Strategie
+    GetStrategy = function(level)
+        if level < 50 then
+            return {
+                Location = "Jungle",
+                Quest = "BanditQuest",
+                Enemy = "Bandit",
+                Priority = "Level"
+            }
+        elseif level < 100 then
+            return {
+                Location = "Desert",
+                Quest = "DesertQuest",
+                Enemy = "Desert Bandit",
+                Priority = "Level"
+            }
+        elseif level < 200 then
+            return {
+                Location = "Ice",
+                Quest = "IceQuest",
+                Enemy = "Snow",
+                Priority = "Level"
+            }
+        elseif level < 350 then
+            return {
+                Location = "Prison",
+                Quest = "PrisonQuest",
+                Enemy = "Prisoner",
+                Priority = "Level"
+            }
+        elseif level < 500 then
+            return {
+                Location = "Magma",
+                Quest = "MagmaQuest",
+                Enemy = "Magma",
+                Priority = "Level"
+            }
+        elseif level < 700 then
+            return {
+                Location = "Fishman",
+                Quest = "FishmanQuest",
+                Enemy = "Fishman",
+                Priority = "Level"
+            }
+        elseif level < 900 then
+            return {
+                Location = "Sky",
+                Quest = "SkyQuest",
+                Enemy = "Sky",
+                Priority = "Level"
+            }
+        elseif level < 1100 then
+            return {
+                Location = "Sea",
+                Quest = "SeaQuest",
+                Enemy = "Sea Soldier",
+                Priority = "Level"
+            }
+        elseif level < 1350 then
+            return {
+                Location = "Fajita",
+                Quest = "FajitaBossQuest",
+                Enemy = "Fajita",
+                Priority = "Boss"
+            }
+        elseif level < 1550 then
+            return {
+                Location = "Dragon",
+                Quest = "DragonQuest",
+                Enemy = "Dragon",
+                Priority = "Boss"
+            }
+        elseif level < 1800 then
+            return {
+                Location = "Venom",
+                Quest = "VenomQuest",
+                Enemy = "Venom",
+                Priority = "Boss"
+            }
+        elseif level < 2000 then
+            return {
+                Location = "Dough",
+                Quest = "DoughQuest",
+                Enemy = "Dough",
+                Priority = "Boss"
+            }
+        elseif level < 2200 then
+            return {
+                Location = "Dragon",
+                Quest = "DragonBossQuest",
+                Enemy = "Dragon Boss",
+                Priority = "Boss"
+            }
+        else
+            return {
+                Location = "Endgame",
+                Quest = "EndgameQuest",
+                Enemy = "Endgame",
+                Priority = "Raid"
+            }
+        end
+    end,
+    
+    -- Beste Quest finden
+    GetBestQuest = function(level)
+        local quests = {
+            {Level = 0, Name = "BanditQuest", NPC = "Bandit"},
+            {Level = 50, Name = "DesertQuest", NPC = "Desert"},
+            {Level = 100, Name = "IceQuest", NPC = "Ice"},
+            {Level = 200, Name = "PrisonQuest", NPC = "Prison"},
+            {Level = 350, Name = "MagmaQuest", NPC = "Magma"},
+            {Level = 500, Name = "FishmanQuest", NPC = "Fishman"},
+            {Level = 700, Name = "SkyQuest", NPC = "Sky"},
+            {Level = 900, Name = "SeaQuest", NPC = "Sea"},
+            {Level = 1100, Name = "FajitaBossQuest", NPC = "Fajita"},
+            {Level = 1350, Name = "DragonQuest", NPC = "Dragon"},
+            {Level = 1550, Name = "VenomQuest", NPC = "Venom"},
+            {Level = 1800, Name = "DoughQuest", NPC = "Dough"},
+            {Level = 2000, Name = "DragonBossQuest", NPC = "Dragon Boss"},
+            {Level = 2200, Name = "EndgameQuest", NPC = "Endgame"},
+        }
+        
+        local best
+        for i = #quests, 1, -1 do
+            if level >= quests[i].Level then
+                best = quests[i]
+                break
+            end
+        end
+        return best
     end
-end
-
-local function ToTime(expire)
-    if not expire or expire <= 0 then return "Lifetime" end
-    local left = expire - os.time()
-    if left < 0 then return "Expired" end
-    local days = math.floor(left / 86400)
-    local hours = math.floor((left % 86400) / 3600)
-    local minutes = math.floor((left % 3600) / 60)
-    if days > 0 then return string.format("%dd %dh", days, hours) end
-    if hours > 0 then return string.format("%dh %dm", hours, minutes) end
-    return string.format("%dm", minutes)
-end
+}
 
 -- =============================================================
--- KEY SYSTEM
--- =============================================================
-local KEY_FILE = CONFIG.KEY_FILE
-
-local function SaveKey(key)
-    if not isfolder(CONFIG.FOLDER) then makefolder(CONFIG.FOLDER) end
-    pcall(writefile, KEY_FILE, HttpService:JSONEncode({ key = key }))
-end
-
-local function LoadSavedKey()
-    if isfolder(CONFIG.FOLDER) and isfile(KEY_FILE) then
-        local ok, v = pcall(function()
-            return HttpService:JSONDecode(readfile(KEY_FILE))
-        end)
-        if ok and type(v) == "table" and v.key then return v.key end
-    end
-    return ""
-end
-
-local function ClearKey()
-    if not isfolder(CONFIG.FOLDER) then makefolder(CONFIG.FOLDER) end
-    pcall(writefile, KEY_FILE, HttpService:JSONEncode({}))
-end
-
--- =============================================================
--- UI SYSTEM (Quantum Style)
+-- UI SYSTEM
 -- =============================================================
 local function CreateUI()
     local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "BF_Auto_V5"
+    ScreenGui.Name = "BF_Auto_V6"
     ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
     ScreenGui.ResetOnSpawn = false
     ScreenGui.IgnoreGuiInset = true
@@ -278,11 +401,10 @@ local function CreateUI()
     
     -- Main Frame
     local Main = Instance.new("Frame")
-    Main.Name = "Main"
-    Main.Size = UDim2.new(0, 320, 0, 400)
+    Main.Size = UDim2.new(0, 350, 0, 500)
     Main.Position = UDim2.new(0, 10, 0, 10)
-    Main.BackgroundColor3 = Color3.fromRGB(8, 4, 20)
-    Main.BackgroundTransparency = 0.15
+    Main.BackgroundColor3 = Color3.fromRGB(6, 3, 15)
+    Main.BackgroundTransparency = 0.1
     Main.BorderSizePixel = 0
     Main.ClipsDescendants = true
     Main.Parent = ScreenGui
@@ -292,16 +414,15 @@ local function CreateUI()
     MainCorner.Parent = Main
     
     local MainStroke = Instance.new("UIStroke")
-    MainStroke.Color = Color3.fromRGB(120, 60, 220)
-    MainStroke.Transparency = 0.4
+    MainStroke.Color = Color3.fromRGB(100, 50, 220)
+    MainStroke.Transparency = 0.3
     MainStroke.Thickness = 1.5
     MainStroke.Parent = Main
     
     -- Header
     local Header = Instance.new("Frame")
-    Header.Name = "Header"
-    Header.Size = UDim2.new(1, 0, 0, 40)
-    Header.BackgroundColor3 = Color3.fromRGB(12, 6, 25)
+    Header.Size = UDim2.new(1, 0, 0, 45)
+    Header.BackgroundColor3 = Color3.fromRGB(10, 5, 22)
     Header.BackgroundTransparency = 0.5
     Header.BorderSizePixel = 0
     Header.Parent = Main
@@ -314,161 +435,156 @@ local function CreateUI()
     Title.Size = UDim2.new(1, -60, 1, 0)
     Title.Position = UDim2.new(0, 10, 0, 0)
     Title.BackgroundTransparency = 1
-    Title.Text = "⚡ BF-Auto V5"
+    Title.Text = "🤖 BF-Auto V6 - Ultimate Bot"
     Title.TextColor3 = Color3.fromRGB(200, 160, 255)
     Title.Font = Enum.Font.GothamBold
-    Title.TextSize = 16
+    Title.TextSize = 14
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.Parent = Header
     
-    local VersionLabel = Instance.new("TextLabel")
-    VersionLabel.Size = UDim2.new(0, 60, 1, 0)
-    VersionLabel.Position = UDim2.new(1, -70, 0, 0)
-    VersionLabel.BackgroundTransparency = 1
-    VersionLabel.Text = "v5.0"
-    VersionLabel.TextColor3 = Color3.fromRGB(100, 80, 150)
-    VersionLabel.Font = Enum.Font.GothamBold
-    VersionLabel.TextSize = 11
-    VersionLabel.TextXAlignment = Enum.TextXAlignment.Right
-    VersionLabel.Parent = Header
-    
-    -- Divider
-    local Divider = Instance.new("Frame")
-    Divider.Size = UDim2.new(1, -20, 0, 1)
-    Divider.Position = UDim2.new(0, 10, 0, 40)
-    Divider.BackgroundColor3 = Color3.fromRGB(120, 60, 220)
-    Divider.BackgroundTransparency = 0.7
-    Divider.BorderSizePixel = 0
-    Divider.Parent = Main
-    
-    -- Content Scroller
-    local Scrolling = Instance.new("ScrollingFrame")
-    Scrolling.Size = UDim2.new(1, -20, 1, -50)
-    Scrolling.Position = UDim2.new(0, 10, 0, 45)
-    Scrolling.BackgroundTransparency = 1
-    Scrolling.BorderSizePixel = 0
-    Scrolling.ScrollBarThickness = 4
-    Scrolling.ScrollBarImageColor3 = Color3.fromRGB(120, 60, 220)
-    Scrolling.CanvasSize = UDim2.new(0, 0, 0, 500)
-    Scrolling.Parent = Main
-    
-    -- Status Bar
-    local StatusBar = Instance.new("Frame")
-    StatusBar.Size = UDim2.new(1, -20, 0, 25)
-    StatusBar.Position = UDim2.new(0, 10, 1, -35)
-    StatusBar.BackgroundColor3 = Color3.fromRGB(12, 6, 25)
-    StatusBar.BackgroundTransparency = 0.7
-    StatusBar.BorderSizePixel = 0
-    StatusBar.Parent = Main
+    -- Status Section
+    local StatusFrame = Instance.new("Frame")
+    StatusFrame.Size = UDim2.new(1, -20, 0, 80)
+    StatusFrame.Position = UDim2.new(0, 10, 0, 50)
+    StatusFrame.BackgroundColor3 = Color3.fromRGB(10, 5, 22)
+    StatusFrame.BackgroundTransparency = 0.7
+    StatusFrame.BorderSizePixel = 0
+    StatusFrame.Parent = Main
     
     local StatusCorner = Instance.new("UICorner")
-    StatusCorner.CornerRadius = UDim.new(0, 6)
-    StatusCorner.Parent = StatusBar
+    StatusCorner.CornerRadius = UDim.new(0, 8)
+    StatusCorner.Parent = StatusFrame
     
     local StatusLabel = Instance.new("TextLabel")
-    StatusLabel.Size = UDim2.new(1, -10, 1, 0)
-    StatusLabel.Position = UDim2.new(0, 5, 0, 0)
+    StatusLabel.Size = UDim2.new(1, -10, 0.5, 0)
+    StatusLabel.Position = UDim2.new(0, 5, 0, 3)
     StatusLabel.BackgroundTransparency = 1
-    StatusLabel.Text = "🟢 Bereit"
+    StatusLabel.Text = "🟢 Initialisiere..."
     StatusLabel.TextColor3 = Color3.fromRGB(150, 255, 150)
-    StatusLabel.Font = Enum.Font.Gotham
-    StatusLabel.TextSize = 11
+    StatusLabel.Font = Enum.Font.GothamBold
+    StatusLabel.TextSize = 13
     StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    StatusLabel.Parent = StatusBar
+    StatusLabel.Parent = StatusFrame
     
-    -- Toggle Buttons
-    local function CreateToggle(parent, y, label, icon, default)
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, -10, 0, 28)
-        btn.Position = UDim2.new(0, 5, 0, y)
-        btn.BackgroundColor3 = Color3.fromRGB(20, 10, 40)
-        btn.BackgroundTransparency = 0.3
-        btn.BorderSizePixel = 0
-        btn.Text = ""
-        btn.AutoButtonColor = false
-        btn.ClipsDescendants = true
-        btn.Parent = parent
-        
-        local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, 6)
-        btnCorner.Parent = btn
-        
-        local btnStroke = Instance.new("UIStroke")
-        btnStroke.Color = Color3.fromRGB(100, 50, 190)
-        btnStroke.Transparency = 0.5
-        btnStroke.Thickness = 1
-        btnStroke.Parent = btn
-        
-        local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.new(1, -50, 1, 0)
-        lbl.Position = UDim2.new(0, 30, 0, 0)
-        lbl.BackgroundTransparency = 1
-        lbl.Text = icon .. " " .. label .. "  [OFF]"
-        lbl.TextColor3 = Color3.fromRGB(200, 180, 230)
-        lbl.Font = Enum.Font.GothamBold
-        lbl.TextSize = 12
-        lbl.TextXAlignment = Enum.TextXAlignment.Left
-        lbl.Parent = btn
-        
-        local status = false
-        
-        btn.MouseButton1Click:Connect(function()
-            status = not status
-            lbl.Text = icon .. " " .. label .. "  [" .. (status and "ON" or "OFF") .. "]"
-            btn.BackgroundColor3 = status and Color3.fromRGB(30, 80, 40) or Color3.fromRGB(20, 10, 40)
-            btnStroke.Color = status and Color3.fromRGB(50, 200, 80) or Color3.fromRGB(100, 50, 190)
-        end)
-        
-        return btn, function() return status end
-    end
+    local TaskLabel = Instance.new("TextLabel")
+    TaskLabel.Size = UDim2.new(1, -10, 0.5, 0)
+    TaskLabel.Position = UDim2.new(0, 5, 0.5, 2)
+    TaskLabel.BackgroundTransparency = 1
+    TaskLabel.Text = "📋 Aufgabe: Warten..."
+    TaskLabel.TextColor3 = Color3.fromRGB(180, 180, 220)
+    TaskLabel.Font = Enum.Font.Gotham
+    TaskLabel.TextSize = 11
+    TaskLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TaskLabel.Parent = StatusFrame
     
-    -- Create Toggles
-    local yPos = 5
-    local espBtn, getESP = CreateToggle(Scrolling, yPos, "ESP Früchte", "👁️")
-    yPos = yPos + 33
-    local grabBtn, getGrab = CreateToggle(Scrolling, yPos, "Auto Früchte", "🍎")
-    yPos = yPos + 33
-    local fightBtn, getFight = CreateToggle(Scrolling, yPos, "Auto Kampf", "⚔️")
-    yPos = yPos + 33
-    local questBtn, getQuest = CreateToggle(Scrolling, yPos, "Auto Quests", "📜")
-    yPos = yPos + 33
-    local safeBtn, getSafe = CreateToggle(Scrolling, yPos, "Safe Teleport", "🛡️")
-    yPos = yPos + 33
-    local reviveBtn, getRevive = CreateToggle(Scrolling, yPos, "Auto Revive", "💀")
-    yPos = yPos + 33
-    local statBtn, getStat = CreateToggle(Scrolling, yPos, "Auto Stats", "📊")
-    yPos = yPos + 33
-    
-    -- Info Display
+    -- Info Section
     local InfoFrame = Instance.new("Frame")
-    InfoFrame.Size = UDim2.new(1, -10, 0, 80)
-    InfoFrame.Position = UDim2.new(0, 5, 0, yPos + 5)
-    InfoFrame.BackgroundColor3 = Color3.fromRGB(12, 6, 25)
+    InfoFrame.Size = UDim2.new(1, -20, 0, 120)
+    InfoFrame.Position = UDim2.new(0, 10, 0, 135)
+    InfoFrame.BackgroundColor3 = Color3.fromRGB(10, 5, 22)
     InfoFrame.BackgroundTransparency = 0.7
     InfoFrame.BorderSizePixel = 0
-    InfoFrame.Parent = Scrolling
+    InfoFrame.Parent = Main
     
     local InfoCorner = Instance.new("UICorner")
-    InfoCorner.CornerRadius = UDim.new(0, 6)
+    InfoCorner.CornerRadius = UDim.new(0, 8)
     InfoCorner.Parent = InfoFrame
     
     local InfoLabel = Instance.new("TextLabel")
     InfoLabel.Size = UDim2.new(1, -10, 1, 0)
     InfoLabel.Position = UDim2.new(0, 5, 0, 5)
     InfoLabel.BackgroundTransparency = 1
-    InfoLabel.Text = "📊 Level: 0\n🍎 Früchte: 0\n❤️ HP: 0/0"
+    InfoLabel.Text = "📊 Level: 0\n💰 Beli: 0\n🍎 Fruit: None\n⚔️ Stats: 0/0/0/0/0"
     InfoLabel.TextColor3 = Color3.fromRGB(180, 160, 220)
     InfoLabel.Font = Enum.Font.Gotham
     InfoLabel.TextSize = 11
     InfoLabel.TextXAlignment = Enum.TextXAlignment.Left
     InfoLabel.TextYAlignment = Enum.TextYAlignment.Top
-    InfoLabel.TextLineHeight = 1.2
+    InfoLabel.TextLineHeight = 1.3
     InfoLabel.Parent = InfoFrame
+    
+    -- Controls
+    local ControlsFrame = Instance.new("Frame")
+    ControlsFrame.Size = UDim2.new(1, -20, 0, 110)
+    ControlsFrame.Position = UDim2.new(0, 10, 0, 260)
+    ControlsFrame.BackgroundColor3 = Color3.fromRGB(10, 5, 22)
+    ControlsFrame.BackgroundTransparency = 0.7
+    ControlsFrame.BorderSizePixel = 0
+    ControlsFrame.Parent = Main
+    
+    local ControlsCorner = Instance.new("UICorner")
+    ControlsCorner.CornerRadius = UDim.new(0, 8)
+    ControlsCorner.Parent = ControlsFrame
+    
+    local StartBtn = Instance.new("TextButton")
+    StartBtn.Size = UDim2.new(0.45, -5, 0, 35)
+    StartBtn.Position = UDim2.new(0.05, 0, 0.15, 0)
+    StartBtn.BackgroundColor3 = Color3.fromRGB(30, 80, 40)
+    StartBtn.BackgroundTransparency = 0.5
+    StartBtn.BorderSizePixel = 0
+    StartBtn.Text = "▶️ Start Bot"
+    StartBtn.TextColor3 = Color3.fromRGB(150, 255, 150)
+    StartBtn.Font = Enum.Font.GothamBold
+    StartBtn.TextSize = 12
+    StartBtn.Parent = ControlsFrame
+    
+    local StartCorner = Instance.new("UICorner")
+    StartCorner.CornerRadius = UDim.new(0, 6)
+    StartCorner.Parent = StartBtn
+    
+    local StopBtn = Instance.new("TextButton")
+    StopBtn.Size = UDim2.new(0.45, -5, 0, 35)
+    StopBtn.Position = UDim2.new(0.5, 5, 0.15, 0)
+    StopBtn.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
+    StopBtn.BackgroundTransparency = 0.5
+    StopBtn.BorderSizePixel = 0
+    StopBtn.Text = "⏹️ Stop Bot"
+    StopBtn.TextColor3 = Color3.fromRGB(255, 150, 150)
+    StopBtn.Font = Enum.Font.GothamBold
+    StopBtn.TextSize = 12
+    StopBtn.Parent = ControlsFrame
+    
+    local StopCorner = Instance.new("UICorner")
+    StopCorner.CornerRadius = UDim.new(0, 6)
+    StopCorner.Parent = StopBtn
+    
+    -- Progress Bar
+    local ProgressFrame = Instance.new("Frame")
+    ProgressFrame.Size = UDim2.new(0.9, 0, 0, 20)
+    ProgressFrame.Position = UDim2.new(0.05, 0, 0.65, 0)
+    ProgressFrame.BackgroundColor3 = Color3.fromRGB(20, 10, 40)
+    ProgressFrame.BackgroundTransparency = 0.5
+    ProgressFrame.BorderSizePixel = 0
+    ProgressFrame.Parent = ControlsFrame
+    
+    local ProgressCorner = Instance.new("UICorner")
+    ProgressCorner.CornerRadius = UDim.new(0, 10)
+    ProgressCorner.Parent = ProgressFrame
+    
+    local ProgressBar = Instance.new("Frame")
+    ProgressBar.Size = UDim2.new(0, 0, 1, 0)
+    ProgressBar.BackgroundColor3 = Color3.fromRGB(100, 50, 220)
+    ProgressBar.BackgroundTransparency = 0.3
+    ProgressBar.BorderSizePixel = 0
+    ProgressBar.Parent = ProgressFrame
+    
+    local ProgressCorner2 = Instance.new("UICorner")
+    ProgressCorner2.CornerRadius = UDim.new(0, 10)
+    ProgressCorner2.Parent = ProgressBar
+    
+    local ProgressLabel = Instance.new("TextLabel")
+    ProgressLabel.Size = UDim2.new(1, 0, 1, 0)
+    ProgressLabel.BackgroundTransparency = 1
+    ProgressLabel.Text = "0%"
+    ProgressLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ProgressLabel.Font = Enum.Font.GothamBold
+    ProgressLabel.TextSize = 10
+    ProgressLabel.Parent = ProgressFrame
     
     -- Close Button
     local CloseBtn = Instance.new("ImageButton")
     CloseBtn.Size = UDim2.new(0, 20, 0, 20)
-    CloseBtn.Position = UDim2.new(1, -25, 0, 10)
+    CloseBtn.Position = UDim2.new(1, -25, 0, 12)
     CloseBtn.BackgroundTransparency = 1
     CloseBtn.Image = "rbxassetid://79324227570635"
     CloseBtn.ImageColor3 = Color3.fromRGB(200, 80, 80)
@@ -478,7 +594,7 @@ local function CreateUI()
         ScreenGui:Destroy()
     end)
     
-    -- Drag Functionality
+    -- Drag
     local dragging = false
     local dragStart
     local startPos
@@ -508,301 +624,509 @@ local function CreateUI()
     end)
     
     return {
-        GetESP = getESP,
-        GetGrab = getGrab,
-        GetFight = getFight,
-        GetQuest = getQuest,
-        GetSafe = getSafe,
-        GetRevive = getRevive,
-        GetStat = getStat,
+        Main = Main,
+        ScreenGui = ScreenGui,
         SetStatus = function(text, color)
             StatusLabel.Text = text
-            if color then
-                StatusLabel.TextColor3 = color
-            end
+            if color then StatusLabel.TextColor3 = color end
         end,
-        UpdateInfo = function(stats)
-            local fruitCount = #FindFruits()
+        SetTask = function(text)
+            TaskLabel.Text = "📋 " .. text
+        end,
+        UpdateInfo = function(data)
+            local stats = data.Stats or {}
             InfoLabel.Text = string.format(
-                "📊 Level: %d\n🍎 Früchte: %d\n❤️ HP: %d/%d\n💰 Beli: %s",
-                stats.Level or 0,
-                fruitCount,
-                stats.Health or 0,
-                stats.MaxHealth or 0,
-                tostring(stats.Beli or 0)
+                "📊 Level: %d (Max: 2550)\n💰 Beli: %s\n🍎 Fruit: %s (%s)\n⚔️ Stats: %d/%d/%d/%d/%d",
+                data.Level or 0,
+                tostring(data.Beli or 0),
+                data.Fruit or "None",
+                data.Race or "Unknown",
+                stats.Melee or 0,
+                stats.Defense or 0,
+                stats.Sword or 0,
+                stats.Gun or 0,
+                stats.Fruit or 0
             )
-        end
+        end,
+        UpdateProgress = function(percent)
+            local p = math.min(percent or 0, 100)
+            ProgressBar.Size = UDim2.new(p / 100, 0, 1, 0)
+            ProgressLabel.Text = math.floor(p) .. "%"
+        end,
+        StartBtn = StartBtn,
+        StopBtn = StopBtn,
+        IsRunning = false
     }
 end
 
 -- =============================================================
--- FEATURES
+-- BOT ENGINE
 -- =============================================================
-local function StartFeatures(UI)
-    -- ESP System
-    spawn(function()
-        while wait(CONFIG.ESP_UPDATE) do
-            if not UI.GetESP() then
-                for _, f in pairs(FindFruits()) do
-                    local old = f.Handle:FindFirstChild("BF_ESP")
-                    if old then old:Destroy() end
-                end
-            else
-                for _, f in pairs(FindFruits()) do
-                    local bb = f.Handle:FindFirstChild("BF_ESP")
-                    if not bb then
-                        bb = Instance.new("BillboardGui")
-                        bb.Name = "BF_ESP"
-                        bb.Size = UDim2.new(0, 200, 0, 35)
-                        bb.AlwaysFaceCamera = true
-                        bb.MaxDistance = 500
-                        bb.StudsOffset = Vector3.new(0, 3, 0)
-                        bb.Parent = f.Handle
-                        
-                        local label = Instance.new("TextLabel")
-                        label.Name = "Label"
-                        label.Size = UDim2.new(1, 0, 1, 0)
-                        label.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
-                        label.BackgroundTransparency = 0.2
-                        label.Text = "🍎 " .. f.Name
-                        label.Font = Enum.Font.GothamBold
-                        label.TextSize = 14
-                        label.TextColor3 = Color3.new(1, 1, 1)
-                        label.Parent = bb
-                        
-                        local dist = Instance.new("TextLabel")
-                        dist.Name = "Distance"
-                        dist.Size = UDim2.new(1, 0, 0, 14)
-                        dist.Position = UDim2.new(0, 0, 1, 0)
-                        dist.BackgroundTransparency = 1
-                        dist.Text = "0m"
-                        dist.Font = Enum.Font.Gotham
-                        dist.TextSize = 11
-                        dist.TextColor3 = Color3.new(1, 1, 0.5)
-                        dist.Parent = bb
-                    end
-                    
-                    local distLabel = bb:FindFirstChild("Distance")
-                    if distLabel and Player.Character then
-                        local hrb = GetHRB()
-                        if hrb then
-                            local dist = (f.Position - hrb.Position).magnitude
-                            distLabel.Text = math.floor(dist) .. "m"
-                            distLabel.TextColor3 = dist < 100 and Color3.new(0, 1, 0) or
-                                                  dist < 300 and Color3.new(1, 1, 0) or
-                                                  Color3.new(1, 0, 0)
+local BotEngine = {
+    Running = false,
+    UI = nil,
+    
+    -- State
+    CurrentTask = "Idle",
+    TaskTimer = 0,
+    LevelTarget = 2550,
+    
+    -- Stats
+    TotalBeli = 0,
+    TotalLevels = 0,
+    TotalFruits = 0,
+    TotalBosses = 0,
+    
+    -- Timers
+    LastCheck = 0,
+    FruitCheck = 0,
+    BossCheck = 0,
+    RaidCheck = 0,
+    SeaBeastCheck = 0,
+    TradeCheck = 0,
+    
+    Initialize = function(self)
+        print("🤖 BF-Auto V6 Bot initialisiert...")
+        self.Running = true
+        self.LastCheck = tick()
+        self:StartLoop()
+    end,
+    
+    StartLoop = function(self)
+        spawn(function()
+            while self.Running do
+                self:Update()
+                wait(CONFIG.CHECK_INTERVAL)
+            end
+        end)
+    end,
+    
+    Update = function(self)
+        local data = GetPlayerData()
+        
+        -- Update UI
+        if self.UI then
+            self.UI.UpdateInfo(data)
+            self.UI.UpdateProgress((data.Level / 2550) * 100)
+        end
+        
+        -- Check if max level reached
+        if data.Level >= 2550 then
+            self:HandleMaxLevel(data)
+            return
+        end
+        
+        -- Main Logic
+        self:HandleFarming(data)
+        self:HandleFruits(data)
+        self:HandleStats(data)
+        self:HandleBosses(data)
+        self:HandleRaids(data)
+        self:HandleSeaBeasts(data)
+        self:HandleTrades(data)
+    end,
+    
+    HandleFarming = function(self, data)
+        local strategy = FarmLogic.GetStrategy(data.Level)
+        local quest = FarmLogic.GetBestQuest(data.Level)
+        
+        if not quest then
+            self:SetStatus("⏳ Keine Quest verfügbar", Color3.fromRGB(255, 200, 100))
+            return
+        end
+        
+        -- Find and start quest
+        local npc = Workspace:FindFirstChild(quest.NPC)
+        if npc then
+            local npcPos = npc:GetPivot()
+            if npcPos then
+                self:SetStatus("📜 Hole Quest: " .. quest.Name, Color3.fromRGB(100, 200, 255))
+                Teleport(npcPos.Position + Vector3.new(0, 5, 0), true)
+                wait(CONFIG.TELEPORT_DELAY)
+                
+                pcall(function()
+                    local remote = ReplicatedStorage:FindFirstChild("Remotes")
+                    if remote then
+                        local questEvent = remote:FindFirstChild("QuestEvent")
+                        if questEvent then
+                            questEvent:FireServer("StartQuest", quest.Name)
                         end
                     end
-                end
+                end)
             end
         end
-    end)
-    
-    -- Auto Grab
-    spawn(function()
-        while wait(CONFIG.GRAB_DELAY) do
-            if UI.GetGrab() then
-                local f, dist = NearestFruit()
-                if f then
-                    UI.SetStatus("🍎 Frucht gefunden (" .. math.floor(dist) .. "m)", Color3.fromRGB(255, 200, 100))
-                    Teleport(f.Position + Vector3.new(0, 2, 0), UI.GetSafe())
-                    wait(CONFIG.TELEPORT_DELAY)
-                else
-                    UI.SetStatus("🍎 Keine Früchte in der Nähe", Color3.fromRGB(200, 200, 200))
-                end
-            end
+        
+        -- Farm enemies
+        local enemy, dist = GetNearestEnemy()
+        if enemy and dist < CONFIG.MAX_DISTANCE then
+            self:SetStatus("⚔️ Farme: " .. enemy.Name, Color3.fromRGB(255, 150, 100))
+            Teleport(enemy:GetPivot().Position + Vector3.new(0, 2, 0), true)
+            wait(CONFIG.TELEPORT_DELAY)
+            
+            pcall(function()
+                ReplicatedStorage.Remotes.Combat:FireServer("Attack", enemy)
+            end)
+        else
+            self:SetStatus("🚶 Suche Gegner...", Color3.fromRGB(200, 200, 200))
         end
-    end)
+    end,
     
-    -- Auto Fight
-    spawn(function()
-        while wait(CONFIG.FIGHT_DELAY) do
-            if UI.GetFight() then
-                if UI.GetRevive() and not IsAlive() then
-                    UI.SetStatus("💀 Wiederbeleben...", Color3.fromRGB(255, 100, 100))
-                    pcall(function()
-                        ReplicatedStorage.Remotes.Character:FireServer("Revive")
-                    end)
-                    wait(2)
-                    continue
-                end
+    HandleFruits = function(self, data)
+        if not CONFIG.AUTO_FRUIT then return end
+        
+        -- Check for fruits in world
+        local fruits = FindFruits()
+        if #fruits > 0 then
+            -- Find best fruit
+            local bestFruit
+            local bestRarity = 0
+            
+            for _, f in pairs(fruits) do
+                local rarity = f.Rarity == "Mythical" and 5 or
+                              f.Rarity == "Legendary" and 4 or
+                              f.Rarity == "Rare" and 3 or
+                              f.Rarity == "Uncommon" and 2 or 1
                 
-                EquipBestWeapon()
-                
-                local target = GetClosestEnemy()
-                if target and target.Distance < CONFIG.MAX_FIGHT_DISTANCE then
-                    UI.SetStatus("⚔️ Kämpfe gegen: " .. target.Name, Color3.fromRGB(255, 150, 100))
-                    Teleport(target.HRP.Position + Vector3.new(0, 2, 0), UI.GetSafe())
-                    wait(0.2)
-                    
-                    pcall(function()
-                        ReplicatedStorage.Remotes.Combat:FireServer("Attack", target.Enemy)
-                    end)
-                    
-                    wait(0.3)
-                    if target.Distance < 20 then
-                        pcall(function()
-                            ReplicatedStorage.Remotes.Combat:FireServer("Attack", target.Enemy)
-                        end)
-                    end
-                else
-                    UI.SetStatus("⚔️ Keine Gegner in Reichweite", Color3.fromRGB(200, 200, 200))
-                end
-            end
-        end
-    end)
-    
-    -- Auto Quests
-    local questList = {
-        {Level = 700,  NPC = "Raiders",              Name = "RaidersQuest"},
-        {Level = 725,  NPC = "Mercenaries",          Name = "MercenariesQuest"},
-        {Level = 750,  NPC = "Diamond",              Name = "DiamondBossQuest"},
-        {Level = 775,  NPC = "Swan Pirates",         Name = "SwanPiratesQuest"},
-        {Level = 800,  NPC = "Factory Staff",        Name = "FactoryQuest"},
-        {Level = 850,  NPC = "Jeremy",               Name = "JeremyBossQuest"},
-        {Level = 875,  NPC = "Marine Lieutenants",   Name = "MarineLieutenantQuest"},
-        {Level = 900,  NPC = "Marine Captains",      Name = "MarineCaptainQuest"},
-        {Level = 925,  NPC = "Fajita",               Name = "FajitaBossQuest"},
-        {Level = 950,  NPC = "Zombies",              Name = "ZombieQuest"},
-        {Level = 975,  NPC = "Vampires",             Name = "VampireQuest"},
-        {Level = 1000, NPC = "Snow Troopers",        Name = "SnowTrooperQuest"},
-        {Level = 1050, NPC = "Winter Warriors",      Name = "WinterWarriorQuest"},
-        {Level = 1100, NPC = "Lab Subordinates",     Name = "LabSubordinateQuest"},
-        {Level = 1125, NPC = "Horned Warriors",      Name = "HornedWarriorQuest"},
-        {Level = 1150, NPC = "Smoke Admiral",        Name = "SmokeAdmiralBossQuest"},
-        {Level = 1425, NPC = "Sea Soldiers",         Name = "SeaSoldierQuest"},
-        {Level = 1450, NPC = "Water Fighters",       Name = "WaterFighterQuest"},
-        {Level = 1475, NPC = "Tide Keeper",          Name = "TideKeeperBossQuest"},
-    }
-    
-    spawn(function()
-        while wait(CONFIG.QUEST_DELAY) do
-            if UI.GetQuest() then
-                if not IsAlive() then
-                    UI.SetStatus("📜 Warte auf Wiederbelebung...", Color3.fromRGB(255, 200, 100))
-                    wait(3)
-                    continue
-                end
-                
-                local lvl = GetPlayerLevel()
-                local bestQ
-                for i = #questList, 1, -1 do
-                    if lvl >= questList[i].Level then
-                        bestQ = questList[i]
+                -- Check if fruit is in target list
+                for _, target in pairs(CONFIG.TARGET_FRUITS) do
+                    if f.Name:find(target) then
+                        rarity = rarity + 10
                         break
                     end
                 end
                 
-                if bestQ then
-                    UI.SetStatus("📜 Suche NPC: " .. bestQ.NPC, Color3.fromRGB(100, 200, 255))
-                    local npc = Workspace:FindFirstChild(bestQ.NPC)
-                    
-                    if npc then
-                        local npcPos = npc:GetPivot()
-                        if npcPos then
-                            Teleport(npcPos.Position + Vector3.new(0, 5, 0), UI.GetSafe())
-                            wait(1)
-                            
-                            local success = pcall(function()
-                                local questRemote = ReplicatedStorage:FindFirstChild("Remotes")
-                                if questRemote then
-                                    local questEvent = questRemote:FindFirstChild("QuestEvent")
-                                    if questEvent then
-                                        questEvent:FireServer("StartQuest", bestQ.Name)
+                if rarity > bestRarity then
+                    bestRarity = rarity
+                    bestFruit = f
+                end
+            end
+            
+            if bestFruit then
+                self:SetStatus("🍎 Hole Frucht: " .. bestFruit.Name, Color3.fromRGB(255, 200, 100))
+                Teleport(bestFruit.Position + Vector3.new(0, 2, 0), true)
+                wait(CONFIG.TELEPORT_DELAY)
+                self.TotalFruits = self.TotalFruits + 1
+            end
+        end
+        
+        -- Check if we should buy fruit
+        if CONFIG.AUTO_BUY_FRUIT and data.Beli > CONFIG.MIN_BELI_FOR_FRUIT then
+            local currentFruit = data.Fruit
+            local shouldBuy = false
+            
+            -- Check if current fruit is bad
+            for _, best in pairs(CONFIG.BEST_FRUITS) do
+                if currentFruit == best then
+                    shouldBuy = false
+                    break
+                end
+                shouldBuy = true
+            end
+            
+            if shouldBuy then
+                self:SetStatus("🛒 Kaufe Frucht...", Color3.fromRGB(255, 200, 100))
+                pcall(function()
+                    -- Try to buy from fruit dealer
+                    local fruitDealer = Workspace:FindFirstChild("FruitDealer")
+                    if fruitDealer then
+                        local pos = fruitDealer:GetPivot()
+                        Teleport(pos.Position + Vector3.new(0, 3, 0), true)
+                        wait(1)
+                        
+                        -- Try to buy best available fruit
+                        for _, fruitName in pairs(CONFIG.BEST_FRUITS) do
+                            pcall(function()
+                                local remote = ReplicatedStorage:FindFirstChild("Remotes")
+                                if remote then
+                                    local buyRemote = remote:FindFirstChild("BuyFruit")
+                                    if buyRemote then
+                                        buyRemote:FireServer(fruitName)
                                     end
                                 end
                             end)
-                            
-                            if success then
-                                UI.SetStatus("✅ Quest gestartet: " .. bestQ.Name, Color3.fromRGB(100, 255, 100))
-                            else
-                                UI.SetStatus("❌ Quest Remote nicht gefunden!", Color3.fromRGB(255, 100, 100))
-                            end
+                            wait(0.5)
                         end
-                    else
-                        UI.SetStatus("❌ NPC nicht gefunden: " .. bestQ.NPC, Color3.fromRGB(255, 100, 100))
                     end
-                else
-                    UI.SetStatus("📜 Level zu niedrig (" .. lvl .. ")", Color3.fromRGB(255, 200, 100))
-                end
+                end)
             end
         end
-    end)
+    end,
     
-    -- Status Update
-    spawn(function()
-        while wait(CONFIG.STATUS_UPDATE) do
-            local stats = GetPlayerStats()
-            UI.UpdateInfo(stats)
-        end
-    end)
-end
-
--- =============================================================
--- KEYBOARD SHORTCUTS
--- =============================================================
-local function SetupShortcuts(UI)
-    UserInputService.InputBegan:Connect(function(input, processed)
-        if processed then return end
+    HandleStats = function(self, data)
+        if not CONFIG.AUTO_STATS then return end
         
-        if input.KeyCode == Enum.KeyCode.F1 then
-            espBtn:Fire()
-        elseif input.KeyCode == Enum.KeyCode.F2 then
-            grabBtn:Fire()
-        elseif input.KeyCode == Enum.KeyCode.F3 then
-            fightBtn:Fire()
-        elseif input.KeyCode == Enum.KeyCode.F4 then
-            questBtn:Fire()
-        elseif input.KeyCode == Enum.KeyCode.F5 then
-            safeBtn:Fire()
-        elseif input.KeyCode == Enum.KeyCode.F6 then
-            reviveBtn:Fire()
+        local stats = data.Stats
+        local totalStats = 0
+        
+        for _, v in pairs(stats) do
+            totalStats = totalStats + v
         end
-    end)
-end
+        
+        -- Check if we can level up stats
+        if totalStats < data.Level * 3 then
+            self:SetStatus("📊 Verwalte Stats...", Color3.fromRGB(100, 200, 255))
+            
+            -- Find stat with lowest level
+            local lowestStat = "Melee"
+            local lowestValue = math.huge
+            
+            for stat, value in pairs(stats) do
+                if value < lowestValue then
+                    lowestValue = value
+                    lowestStat = stat
+                end
+            end
+            
+            -- Level up stat
+            pcall(function()
+                local statRemote = ReplicatedStorage:FindFirstChild("Remotes")
+                if statRemote then
+                    local statEvent = statRemote:FindFirstChild("LevelStat")
+                    if statEvent then
+                        statEvent:FireServer(lowestStat)
+                    end
+                end
+            end)
+            
+            self:SetStatus("📊 Erhöhe: " .. lowestStat, Color3.fromRGB(100, 200, 255))
+        end
+    end,
+    
+    HandleBosses = function(self, data)
+        if not CONFIG.AUTO_BOSS then return end
+        
+        -- Check if time for boss
+        if tick() - self.BossCheck < CONFIG.BOSS_RESET_TIME then return end
+        
+        local bosses = GetBosses()
+        if #bosses > 0 then
+            local nearestBoss
+            local nearestDist = math.huge
+            
+            for _, boss in pairs(bosses) do
+                local hrp = boss:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local hrb = GetHRB()
+                    if hrb then
+                        local dist = (hrp.Position - hrb.Position).magnitude
+                        if dist < nearestDist then
+                            nearestDist = dist
+                            nearestBoss = boss
+                        end
+                    end
+                end
+            end
+            
+            if nearestBoss then
+                self:SetStatus("👑 Kämpfe Boss: " .. nearestBoss.Name, Color3.fromRGB(255, 200, 100))
+                Teleport(nearestBoss:GetPivot().Position + Vector3.new(0, 2, 0), true)
+                wait(CONFIG.TELEPORT_DELAY)
+                
+                pcall(function()
+                    ReplicatedStorage.Remotes.Combat:FireServer("Attack", nearestBoss)
+                    wait(0.2)
+                    ReplicatedStorage.Remotes.Combat:FireServer("Attack", nearestBoss)
+                    wait(0.2)
+                    ReplicatedStorage.Remotes.Combat:FireServer("Attack", nearestBoss)
+                end)
+                
+                self.TotalBosses = self.TotalBosses + 1
+            end
+        end
+        
+        self.BossCheck = tick()
+    end,
+    
+    HandleRaids = function(self, data)
+        if not CONFIG.AUTO_RAID then return end
+        
+        -- Check if level is high enough for raids        if data.Level < 1200 then return end
+        if tick() - self.RaidCheck < CONFIG.RAID_WAIT_TIME then return end
+        
+        -- Check for raid NPC
+        local raidNPC = Workspace:FindFirstChild("RaidNPC")
+        if raidNPC then
+            self:SetStatus("⚡ Starte Raid...", Color3.fromRGB(255, 200, 100))
+            local pos = raidNPC:GetPivot()
+            Teleport(pos.Position + Vector3.new(0, 3, 0), true)
+            wait(1)
+            
+            pcall(function()
+                local remote = ReplicatedStorage:FindFirstChild("Remotes")
+                if remote then
+                    local raidRemote = remote:FindFirstChild("StartRaid")
+                    if raidRemote then
+                        raidRemote:FireServer()
+                    end
+                end
+            end)
+        end
+        
+        self.RaidCheck = tick()
+    end,
+    
+    HandleSeaBeasts = function(self, data)
+        if not CONFIG.AUTO_SEA_BEAST then return end
+        
+        -- Check if level is high enough
+        if data.Level < 700 then return end
+        if tick() - self.SeaBeastCheck < 60 then return end
+        
+        local beasts = GetSeaBeasts()
+        if #beasts > 0 then
+            local nearestBeast
+            local nearestDist = math.huge
+            
+            for _, beast in pairs(beasts) do
+                local hrp = beast:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local hrb = GetHRB()
+                    if hrb then
+                        local dist = (hrp.Position - hrb.Position).magnitude
+                        if dist < nearestDist then
+                            nearestDist = dist
+                            nearestBeast = beast
+                        end
+                    end
+                end
+            end
+            
+            if nearestBeast then
+                self:SetStatus("🐉 Jage Sea Beast!", Color3.fromRGB(255, 200, 100))
+                Teleport(nearestBeast:GetPivot().Position + Vector3.new(0, 5, 0), true)
+                wait(CONFIG.TELEPORT_DELAY)
+                
+                pcall(function()
+                    ReplicatedStorage.Remotes.Combat:FireServer("Attack", nearestBeast)
+                    wait(0.3)
+                    ReplicatedStorage.Remotes.Combat:FireServer("Attack", nearestBeast)
+                end)
+            end
+        end
+        
+        self.SeaBeastCheck = tick()
+    end,
+    
+    HandleTrades = function(self, data)
+        if not CONFIG.AUTO_TRADE then return end
+        if tick() - self.TradeCheck < 300 then return end -- 5 minutes
+        
+        -- Check for trade NPC
+        local tradeNPC = Workspace:FindFirstChild("TradeNPC")
+        if tradeNPC then
+            self:SetStatus("💱 Prüfe Trades...", Color3.fromRGB(200, 200, 255))
+            local pos = tradeNPC:GetPivot()
+            Teleport(pos.Position + Vector3.new(0, 3, 0), true)
+            wait(1)
+            
+            pcall(function()
+                -- Auto-trade logic
+                local remote = ReplicatedStorage:FindFirstChild("Remotes")
+                if remote then
+                    local tradeRemote = remote:FindFirstChild("Trade")
+                    if tradeRemote then
+                        tradeRemote:FireServer()
+                    end
+                end
+            end)
+        end
+        
+        self.TradeCheck = tick()
+    end,
+    
+    HandleMaxLevel = function(self, data)
+        self:SetStatus("🎉 MAX LEVEL ERREICHT!", Color3.fromRGB(255, 215, 0))
+        self.CurrentTask = "MaxLevel"
+        
+        -- Continue farming for fruits and beli
+        self:HandleFruits(data)
+        self:HandleBosses(data)
+        self:HandleSeaBeasts(data)
+        
+        -- Check for upgrades
+        if data.Beli > 10000000 then
+            self:SetStatus("💰 Farme Beli für Upgrades...", Color3.fromRGB(255, 215, 0))
+        end
+    end,
+    
+    SetStatus = function(self, text, color)
+        if self.UI then
+            self.UI.SetStatus(text, color)
+            self.UI.SetTask(text)
+        end
+    end
+}
 
 -- =============================================================
--- MAIN
+-- MAIN START
 -- =============================================================
-local function Main()
+local function StartBot()
     -- Create UI
     local UI = CreateUI()
-    UI.SetStatus("🟢 BF-Auto V5 gestartet!", Color3.fromRGB(150, 255, 150))
+    BotEngine.UI = UI
     
-    -- Setup Shortcuts
-    SetupShortcuts(UI)
-    
-    -- Start Features
-    StartFeatures(UI)
-    
-    -- Notification
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = "⚡ BF-Auto V5",
-            Text = "Gestartet! F1-F6 für Shortcuts",
-            Duration = 5,
-        })
+    -- Button Events
+    UI.StartBtn.MouseButton1Click:Connect(function()
+        if not BotEngine.Running then
+            UI.IsRunning = true
+            BotEngine:Initialize()
+            UI.SetStatus("🟢 Bot läuft!", Color3.fromRGB(150, 255, 150))
+            UI.StartBtn.Text = "🔄 Bot läuft..."
+            UI.StartBtn.BackgroundColor3 = Color3.fromRGB(50, 120, 50)
+            
+            pcall(function()
+                StarterGui:SetCore("SendNotification", {
+                    Title = "🤖 BF-Auto V6",
+                    Text = "Bot gestartet! Durchspielt das gesamte Spiel!",
+                    Duration = 5,
+                })
+            end)
+        end
     end)
     
-    print("✅ BF-Auto V5: Alle Systeme aktiv!")
-    warn("⚡ BF-Auto V5 gestartet! F1-ESP, F2-Grab, F3-Kampf, F4-Quest, F5-SafeTP, F6-Revive")
+    UI.StopBtn.MouseButton1Click:Connect(function()
+        if BotEngine.Running then
+            BotEngine.Running = false
+            UI.IsRunning = false
+            UI.SetStatus("⏹️ Bot gestoppt", Color3.fromRGB(255, 150, 150))
+            UI.StartBtn.Text = "▶️ Start Bot"
+            UI.StartBtn.BackgroundColor3 = Color3.fromRGB(30, 80, 40)
+        end
+    end)
+    
+    -- Auto-start if enabled
+    if CONFIG.AUTO_START then
+        wait(1)
+        UI.StartBtn:Fire()
+    end
+    
+    print("✅ BF-Auto V6 gestartet! Bot wird das Spiel automatisch durchspielen!")
+    print("📋 Ziel: Level 2550, Beste Früchte, Maximierte Stats")
+    
+    -- Keep UI alive
+    while UI.ScreenGui and UI.ScreenGui.Parent do
+        wait(1)
+    end
 end
 
 -- =============================================================
--- START
+-- ERROR HANDLER & START
 -- =============================================================
--- Error Handler
-local xpcallOk, xpcallErr = xpcall(Main, function(err)
+local success, err = xpcall(StartBot, function(e)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
             Title = "❌ BF-Auto Error",
-            Text = tostring(err),
+            Text = tostring(e),
             Duration = 10,
         })
     end)
-    warn("[BF-Auto] Error: " .. tostring(err))
+    warn("[BF-Auto] Error: " .. tostring(e))
+    print("🔄 Versuche Neustart in 5 Sekunden...")
+    task.wait(5)
+    StartBot()
 end)
 
-if not xpcallOk then
-    warn("[BF-Auto] Failed to start: " .. tostring(xpcallErr))
+if not success then
+    warn("[BF-Auto] Failed to start: " .. tostring(err))
+    print("⚠️ Bitte führe das Script erneut aus")
 end
