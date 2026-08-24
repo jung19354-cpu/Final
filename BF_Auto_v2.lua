@@ -8,6 +8,8 @@ local Players = game:GetService("Players")
 local Workspace = workspace
 local Player = Players.LocalPlayer
 
+print("BF-Auto V2: Script gestartet...")
+
 -- ------------------- Helfer -------------------
 local function getHRB()
 	local c = Player.Character
@@ -56,7 +58,23 @@ local Gui = Instance.new("ScreenGui")
 Gui.Name = "BFAutoGui"
 Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
-Gui.Parent = Player.PlayerGui
+-- Kamera als Parent: funktioniert sofort, auch wenn PlayerGui noch nicht da ist
+local old = workspace:GetCamera():FindFirstChild("BFAutoGui")
+if old then old:Destroy() end
+Gui.Parent = workspace:GetCamera()
+
+-- Grosses Schild: Beweis dass das Script laeuft (verschwindet nach 5s)
+local Notify = Instance.new("TextLabel")
+Notify.Size = UDim2.new(0, 340, 0, 60)
+Notify.Position = Vector2.new(0.5, 0.1)
+Notify.AnchorPoint = Vector2.new(0.5, 0)
+Notify.BackgroundColor3 = Color3.new(0.05, 0.35, 0.1)
+Notify.Text = "BF-Auto V2 LAUFT!"
+Notify.Font = Enum.Font.GothamBold
+Notify.TextSize = 28
+Notify.TextColor3 = Color3.new(1, 1, 1)
+Notify.Parent = Gui
+spawn(function() wait(5) Notify:Destroy() end)
 
 local Win = Instance.new("Frame")
 Win.Name = "BFAutoWin"
@@ -240,4 +258,5 @@ spawn(function() while true do wait(3)
 	Status.Text = Status.Text ~= "" and Status.Text or info
 end end)
 
-warn("BF-Auto gestartet! Toggles unten links.")
+warn("BF-Auto V2 gestartet! Toggles unten links.")
+print("BF-Auto V2: Fenster gebaut, alles aktiv.")
