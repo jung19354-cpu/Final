@@ -1,9 +1,31 @@
 -- =============================================================
---  BF-Auto | Eigenes Standalone-Script für Blox Fruits
---  Für Delta Executor (BlueStacks): ALLES markieren -> Execute
---  Ban-Risiko: wie bei jedem Script, auf eigene Gefahr
+--  BF-Auto V3 | SELBST-DIAGNOSE-Version (BlueStacks + Delta)
+--  ALLES markieren -> direkt in die Delta-Konsole einkopieren -> Execute
+--  Zeigt Fehler UNTEREN MITTE auf dem Bildschirm statt in den Logs
 -- =============================================================
 
+-- GUI-Parent: der eigene PlayerGui (clientseitig immer da)
+local cam = game:GetService("Players").LocalPlayer.PlayerGui
+
+-- Fehler-Schild: zeigt jeden Fehler direkt im Spiel an
+local errGui = Instance.new("ScreenGui")
+errGui.Name = "BF_ErrorShield"
+errGui.ResetOnSpawn = false
+local errLabel = Instance.new("TextLabel")
+errLabel.Size = UDim2.new(0, 420, 0, 70)
+errLabel.Position = UDim2.new(0.5, -210, 0, 84)
+errLabel.AnchorPoint = Vector2.new(0, 0)
+errLabel.BackgroundColor3 = Color3.new(0.85, 0.1, 0.1)
+errLabel.BackgroundTransparency = 0.1
+errLabel.Font = Enum.Font.GothamBold
+errLabel.TextSize = 16
+errLabel.TextColor3 = Color3.new(1, 1, 1)
+errLabel.TextXAlignment = Enum.TextXAlignment.Left
+errLabel.Text = "BF-Auto V3: laedt..."
+errLabel.Parent = errGui
+errGui.Parent = cam
+
+local ok, errMsg = pcall(function()
 local Players = game:GetService("Players")
 local Workspace = workspace
 local Player = Players.LocalPlayer
@@ -59,14 +81,14 @@ Gui.Name = "BFAutoGui"
 Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
 -- Kamera als Parent: funktioniert sofort, auch wenn PlayerGui noch nicht da ist
-local old = workspace:GetCamera():FindFirstChild("BFAutoGui")
+local old = cam:FindFirstChild("BFAutoGui")
 if old then old:Destroy() end
-Gui.Parent = workspace:GetCamera()
+Gui.Parent = cam
 
 -- Grosses Schild: Beweis dass das Script laeuft (verschwindet nach 5s)
 local Notify = Instance.new("TextLabel")
 Notify.Size = UDim2.new(0, 340, 0, 60)
-Notify.Position = Vector2.new(0.5, 0.1)
+Notify.Position = UDim2.new(0.5, 0, 0, 108)
 Notify.AnchorPoint = Vector2.new(0.5, 0)
 Notify.BackgroundColor3 = Color3.new(0.05, 0.35, 0.1)
 Notify.Text = "BF-Auto V2 LAUFT!"
@@ -79,7 +101,7 @@ spawn(function() wait(5) Notify:Destroy() end)
 local Win = Instance.new("Frame")
 Win.Name = "BFAutoWin"
 Win.Size = UDim2.new(0, 270, 0, 190)
-Win.Position = Vector2.new(8, 45)
+Win.Position = UDim2.new(0, 8, 0, 45)
 Win.BackgroundColor3 = Color3.new(0.08, 0.08, 0.12)
 Win.BackgroundTransparency = 0.15
 Win.BorderSizePixel = 0
@@ -87,7 +109,7 @@ Win.Parent = Gui
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 22)
-Title.Position = Vector2.new(0, 0)
+Title.Position = UDim2.new(0, 0, 0, 0)
 Title.BackgroundTransparency = 1
 Title.Text = "BF-Auto  (eigene Script)"
 Title.TextColor3 = Color3.new(1, 0.75, 0.2)
@@ -98,7 +120,7 @@ Title.Parent = Win
 local function makeToggle(y, label)
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(0.92, 0, 0, 20)
-	btn.Position = Vector2.new(0.04, y)
+	btn.Position = UDim2.new(0, 10, 0, y)
 	btn.BackgroundColor3 = Color3.new(0.16, 0.16, 0.22)
 	btn.BackgroundTransparency = 0.1
 	btn.Text = label .. "  [OFF]"
@@ -122,7 +144,7 @@ local tQuest = makeToggle(106, "Auto Quests")
 
 local Status = Instance.new("TextLabel")
 Status.Size = UDim2.new(0.92, 0, 0, 40)
-Status.Position = Vector2.new(0.04, 134)
+Status.Position = UDim2.new(0, 10, 0, 134)
 Status.BackgroundTransparency = 1
 Status.Text = "Startet..."
 Status.Font = Enum.Font.Gotham
@@ -259,4 +281,14 @@ spawn(function() while true do wait(3)
 end end)
 
 warn("BF-Auto V2 gestartet! Toggles unten links.")
-print("BF-Auto V2: Fenster gebaut, alles aktiv.")
+print("BF-Auto V2: Fenster gebaut, alles aktiv."
+end)
+
+if not ok then
+	errLabel.Text = "BF-Auto FEHLER:\n" .. tostring(errMsg)
+	game:GetService("RunService"):Wait(15)
+	errGui:Destroy()
+else
+	errLabel.Text = "BF-Auto V3 LAUFT! Schild verschwindet..."
+	task.delay(4, function() errGui:Destroy() end)
+end
