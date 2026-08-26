@@ -3,8 +3,7 @@
 -- ============================================
 
 print("🔄 Lade dein persönliches Doors-Skript...")
-
-loadstring(game:HttpGet("https://raw.githubusercontent.com/MrNeRD0/Doors-Hack/main/DoorsV3_ByNerd.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/toosiwhip/v4/main/statue.lua"))()
 
 -- 5️⃣ Maus-Problem automatisch fixen
 game:GetService("UserInputService").MouseIconEnabled = true
