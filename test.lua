@@ -4,8 +4,7 @@
 
 print("🔄 Lade dein persönliches Doors-Skript...")
 
-
-loadstring(game:HttpGet("https://raw.githubusercontent.com/GIFKITS/gifkits/refs/heads/main/scripts/Auto%20Rooms%20Complete.luau"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/MrNeRD0/Doors-Hack/main/DoorsV3_ByNerd.lua"))()
 
 -- 5️⃣ Maus-Problem automatisch fixen
 game:GetService("UserInputService").MouseIconEnabled = true
