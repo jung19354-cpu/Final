@@ -4,7 +4,7 @@
 
 print("🔄 Lade dein persönliches Doors-Skript...")
 
-loadstring(game:HttpGet('https://raw.githubusercontent.com/zoophiliaphobic/POOPDOORS/main/script.lua'))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/GIFKITS/gifkits/refs/heads/main/scripts/Auto%20Rooms%20Complete.luau"))()
 
 -- 5️⃣ Maus-Problem automatisch fixen
 game:GetService("UserInputService").MouseIconEnabled = true
