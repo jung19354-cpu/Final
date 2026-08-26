@@ -4,7 +4,7 @@
 
 print("🔄 Lade dein persönliches Doors-Skript...")
 
-loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/ef9b5a30ec84e201b585c3ef1850d264b216441eab77257f0e9184de826cc47e/download"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/COOLXPLO/DP-HUB-coolxplo/refs/heads/main/Doors.lua"))()
 
 -- 5️⃣ Maus-Problem automatisch fixen
 game:GetService("UserInputService").MouseIconEnabled = true
