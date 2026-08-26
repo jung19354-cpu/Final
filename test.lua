@@ -4,7 +4,7 @@
 
 print("🔄 Lade dein persönliches Doors-Skript...")
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/OminousVibes-Exploit/Scripts/main/doors/loadstring.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/InfernusScripts/Null-Fire/main/Loader"))()
 
 -- 5️⃣ Maus-Problem automatisch fixen
 game:GetService("UserInputService").MouseIconEnabled = true
