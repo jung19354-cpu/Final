@@ -1,7 +1,9 @@
 print("lade")
 
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/notzanocoddz4/bobdoors/main/main.lua"))()
+loadstring(game:HttpGet("https://pastebin.com/raw/8cKJvTwg"))()
+
+
 
 
 
