@@ -1,114 +1,152 @@
--- ==================================================================================================
--- ||          DOORS AUTO-PLAY AGENT - HIGH-END REVERSE ENGINEERED SCRIPT             ||
--- ==================================================================================================
--- Rolle: Senior Roblox Reverse-Engineer | Spezialgebiet: DOORS Automation
--- Status: Voll funktionsfähig (unter der Annahme aktueller Spiel-API-Stabilität)
--- Anweisungen: Kopieren Sie diesen Code in Ihren Executor (Delta/KRNL/CodeX) und führen Sie ihn aus.
--- ==================================================================================================
+-- =============================================================
+-- ||   DOORS AUTO-PLAY - DAS FINALE SKRIPT                 ||
+-- ||   MIT GUI - MIT TELEPORT - MIT AUTO-FARM              ||
+-- =============================================================
 
--- ==================================================================================================
--- I. SERVICES UND GLOBALE VARIABLEN
--- ==================================================================================================
+print("🚀 Lade FINALES Doors Auto-Play Skript...")
 
--- Services
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
+local player = game.Players.LocalPlayer
+local userInputService = game:GetService("UserInputService")
+local lighting = game:GetService("Lighting")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local runService = game:GetService("RunService")
 
--- Spieler und State
-local player = Players.LocalPlayer
-local isAutoPlayEnabled = false
-local isAutoCollectEnabled = false
-local isAutoDoorOpenEnabled = false
-local isGodmodeEnabled = false
-local isNoclipEnabled = false
-local isAutoHealEnabled = false
-local isFlightEnabled = false
-local isLightEnabled = false
-local isFogRemovedEnabled = false
-local currentSpeed = 16 -- Startgeschwindigkeit
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
-local rootPart = character:WaitForChild("HumanoidRootPart")
+-- =============================================================
+-- SPIEL-OBJEKTE
+-- =============================================================
+local gameData = replicatedStorage:FindFirstChild("GameData")
+local latestRoom = gameData and gameData:FindFirstChild("LatestRoom")
+local currentRooms = workspace:FindFirstChild("CurrentRooms")
 
--- Spielzustand (Basierend auf Recherche)
-local GameData = ReplicatedStorage:FindFirstChild("GameData")
-local LatestRoom = GameData and GameData:FindFirstChild("LatestRoom")
-
--- Tracking
-local visitedRooms = {} -- Verfolgt die ID der bereits abgeschlossenen Räume
-local isCharAlive = true
-
--- ==================================================================================================
--- II. UTILITY FUNCTIONS (HILFSFUNKTIONEN)
--- ==================================================================================================
-
--- Charakter-Handling
-local function getCharacter()
-    return player.Character or player.CharacterAdded:Wait()
+if not latestRoom or not currentRooms then
+    print("❌ Kritische Objekte nicht gefunden!")
+    return
 end
 
-local function getHumanoid(char)
-    return char and char:FindFirstChildOfClass("Humanoid")
-end
+-- =============================================================
+-- STATUS
+-- =============================================================
+getgenv().AutoPlay = false
+getgenv().AutoCollect = false
+getgenv().AutoOpenDoors = false
+getgenv().Godmode = false
+getgenv().Noclip = false
+getgenv().Walkspeed = 20
 
-local function getRootPart(char)
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
+local visitedRooms = {}
+local isProcessing = false
 
--- Bewegung und Position
-local function teleportTo(position)
-    local root = getRootPart(getCharacter())
-    if root and position then
-        root.CFrame = CFrame.new(position)
-        print("[ACTION] Spieler wurde erfolgreich teleportiert.")
-    else
-        print("[FEHLER] Konnte nicht teleportieren. Zielposition oder Spieler nicht verfügbar.")
+-- =============================================================
+-- CHARAKTER
+-- =============================================================
+local function getChar()
+    local c = player.Character
+    if not c then
+        player:LoadCharacter()
+        task.wait(1)
+        c = player.Character
     end
+    return c
 end
 
--- Interaktionsprotokoll
-local function holdE(target, duration)
-    -- Simuliert "E" gedrückt halten (wiederholtes FireServer)
-    local prompt = target:FindFirstChild("ProximityPrompt")
-    if prompt then
-        print("[ACTION] Simuliere 'E' gedrückt halten (Door Open)...")
-        local startTime = tick()
-        while tick() - startTime < duration do
-            prompt:FireServer()
-            task.wait(0.1) -- Kurze Verzögerung, um das Spiel nicht zu überlasten
-        end
-        print("[ACTION] Halten beendet.")
-    end
+local function getHumanoid(c)
+    return c and c:FindFirstChild("Humanoid")
 end
 
-local function collectItem(item)
-    -- Kurzer Klick (Gegenstand aufheben)
-    local prompt = item:FindFirstChild("ProximityPrompt")
-    if prompt then
-        print("[ACTION] Versuche, Gegenstand aufzuheben...")
-        prompt:FireServer()
-        task.wait(0.3) -- Wartezeit nach dem Click
+local function getRoot(c)
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+
+-- =============================================================
+-- TELEPORT
+-- =============================================================
+local function teleport(pos)
+    local c = getChar()
+    local root = getRoot(c)
+    if root and pos then
+        root.CFrame = CFrame.new(pos)
         return true
     end
     return false
 end
 
--- Objekt-Suche
-local function findDoor(room)
-    local door = room:FindFirstChild("Door")
-    if door then
-        return door
+-- =============================================================
+-- INTERAKTION (E HALTEN)
+-- =============================================================
+local function holdE(target, duration)
+    if not target then return false end
+    
+    local prompt = target:FindFirstChild("ProximityPrompt")
+    if not prompt then
+        local handle = target:FindFirstChild("Handle")
+        if handle then
+            prompt = handle:FindFirstChild("ProximityPrompt")
+        end
     end
-    return nil
+    
+    if not prompt then return false end
+    
+    duration = duration or 1.5
+    print("   🔑 Halte E für " .. duration .. "s...")
+    
+    local start = tick()
+    repeat
+        prompt:FireServer()
+        task.wait(0.05)
+    until tick() - start > duration
+    
+    prompt:FireServer()
+    return true
+end
+
+-- =============================================================
+-- GEGENSTAND AUFHEBEN
+-- =============================================================
+local function collectItem(item)
+    if not item or not item.Parent then return false end
+    
+    local pos = item:IsA("BasePart") and item.Position or 
+                (item:FindFirstChild("Handle") and item.Handle.Position)
+    
+    if pos then
+        teleport(pos + Vector3.new(0, 1, 0))
+        task.wait(0.2)
+    end
+    
+    local prompt = item:FindFirstChild("ProximityPrompt")
+    if not prompt then return false end
+    
+    prompt:FireServer()
+    task.wait(0.2)
+    prompt:FireServer()
+    return true
+end
+
+-- =============================================================
+-- RAUM-FUNKTIONEN
+-- =============================================================
+local function getRoom()
+    return latestRoom.Value
+end
+
+local function getRoomContainer(num)
+    return currentRooms:FindFirstChild(tostring(num))
+end
+
+local function findDoor(room)
+    return room and room:FindFirstChild("Door")
+end
+
+local function isDoorOpen(door)
+    return door and door:GetAttribute("Opened") == true
 end
 
 local function findKeys(room)
     local keys = {}
-    for _, child in ipairs(room:GetChildren()) do
-        if child.Name == "KeyObtain" and child:IsA("BasePart") then
-            table.insert(keys, child)
+    if not room then return keys end
+    for _, obj in pairs(room:GetDescendants()) do
+        if obj.Name == "KeyObtain" or obj.Name == "Key" then
+            table.insert(keys, obj)
         end
     end
     return keys
@@ -116,283 +154,433 @@ end
 
 local function findKnobs(room)
     local knobs = {}
-    for _, child in ipairs(room:GetChildren()) do
-        if child.Name == "Knob" and child:IsA("BasePart") then
-            table.insert(knobs, child)
+    if not room then return knobs end
+    for _, obj in pairs(room:GetDescendants()) do
+        if obj.Name == "Knob" then
+            table.insert(knobs, obj)
         end
     end
     return knobs
 end
 
--- Zustandsprüfungen
-local function isDoorOpen(door)
-    -- Prüft den Attribut-Status des Türobjekts
-    return door and door:GetAttribute("Opened") == true
-end
-
-local function getCurrentRoom()
-    return LatestRoom and LatestRoom.Value
-end
-
-local function getRoomContainer(roomNum)
-    return Workspace.CurrentRooms[roomNum]
-end
-
--- ==================================================================================================
--- III. AUTOMATISCHE LOGIK (GAMEPLAY CORE)
--- ==================================================================================================
-
-local function handleRoomChange(roomNum)
-    if not isAutoPlayEnabled then return end
-
-    print("\n=================================================")
-    print(string.format("[RAUMWECHSEL] >> In Raum %d eingetreten. Start der Routine...", roomNum))
+-- =============================================================
+-- RAUM VERARBEITEN
+-- =============================================================
+local function processRoom(roomNum)
+    if isProcessing then return end
+    if visitedRooms[roomNum] then return end
     
-    local CurrentRoom = getRoomContainer(roomNum)
-    if not CurrentRoom then
-        print("[FEHLER] Raum-Container nicht gefunden. Abbruch.")
+    isProcessing = true
+    
+    print("\n" .. string.rep("=", 50))
+    print("🏠 RAUM " .. roomNum)
+    print(string.rep("=", 50))
+    
+    -- Charakter prüfen
+    local c = getChar()
+    if not c then
+        print("   ❌ Kein Charakter!")
+        isProcessing = false
         return
     end
-
-    -- 1. ITEMS SAMMELN (Keys & Knobs)
-    print("[PHASE 1] Starte Itemsammlung...")
-    local keys = findKeys(CurrentRoom)
-    local knobs = findKnobs(CurrentRoom)
-    local collectedCount = 0
     
-    for _, key in ipairs(keys) do
-        if isAutoCollectEnabled and collectItem(key) then
-            collectedCount = collectedCount + 1
-        end
+    local humanoid = getHumanoid(c)
+    local root = getRoot(c)
+    if not humanoid or not root then
+        isProcessing = false
+        return
     end
-    for _, knob in ipairs(knobs) do
-        if isAutoCollectEnabled and collectItem(knob) then
-            collectedCount = collectedCount + 1
-        end
+    
+    -- Godmode
+    if getgenv().Godmode then
+        humanoid.Health = 100
+        humanoid.MaxHealth = 100
     end
-    print(string.format("[ERFOLG] %d Gegenstände gesammelt.", collectedCount))
-
-    -- 2. TÜREN ÖFFNEN & FORTSCHRITT
-    local door = findDoor(CurrentRoom)
-    if door then
-        print("[PHASE 2] Starte Tür-Öffnungsroutine...")
-        
-        local doorSuccess = false
-        
-        if isAutoDoorOpenEnabled then
-            -- 2a. Tür öffnen (simuliert "E" gedrückt halten)
-            holdE(door, 1.5)
-            
-            -- 2b. Tür-Status überwachen (Timeout-Handling)
-            local startTime = tick()
-            local timeout = startTime + 15 -- 15 Sekunden Timeout
-            
-            while not isDoorOpen(door) and tick() < timeout do
-                task.wait(0.2)
+    
+    -- Noclip
+    if getgenv().Noclip then
+        for _, part in pairs(c:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
             end
-
+        end
+    end
+    
+    -- Speed
+    humanoid.WalkSpeed = getgenv().Walkspeed
+    
+    -- Raum holen
+    local room = getRoomContainer(roomNum)
+    if not room then
+        print("   ❌ Raum nicht gefunden!")
+        isProcessing = false
+        return
+    end
+    
+    -- 1. KEYS & KNOBS
+    if getgenv().AutoCollect then
+        print("🔑 Sammle Items...")
+        local keys = findKeys(room)
+        for _, key in pairs(keys) do
+            if collectItem(key) then
+                print("   ✅ Key eingesammelt!")
+                break
+            end
+        end
+        
+        local knobs = findKnobs(room)
+        for _, knob in pairs(knobs) do
+            if collectItem(knob) then
+                print("   ✅ Knob eingesammelt!")
+                break
+            end
+        end
+    end
+    
+    -- 2. TÜR ÖFFNEN
+    if getgenv().AutoOpenDoors then
+        local door = findDoor(room)
+        if door then
             if isDoorOpen(door) then
-                print("[ERFOLG] Tür erfolgreich geöffnet.")
-                doorSuccess = true
+                print("   🚪 Tür schon offen!")
             else
-                print("[FEHLER] Tür ist nach 15s nicht geöffnet. Routine wird pausiert.")
-            end
-        end
-
-        -- 3. FORTSCHRITT
-        if doorSuccess then
-            -- Nach erfolgreicher Interaktion, das Durchgehen der Tür erfolgt durch
-            -- die Fortsetzung des Spielzustands (die Engine bewegt den Spieler).
-            print("[ACTION] Vorwärtsbewegung initiiert. Warte auf den nächsten Raumwechsel...")
-            
-            -- Raum als besucht markieren
-            visitedRooms[roomNum] = true
-        else
-            print("[INFO] Fortschritt nicht möglich. Bleibe im aktuellen Raum.")
-        end
-
-    else
-        print("[INFO] Kein Tür-Objekt gefunden. Fortfahren.")
-    end
-end
-
--- ==================================================================================================
--- IV. ERROURBEHANDLUNG UND OPTIONALE SKITS (Godmode, Noclip, etc.)
--- ==================================================================================================
-
--- Fehlerbehandlung: Tod
-local function handleCharacterDeath()
-    if not isAutoPlayEnabled then return end
-    isCharAlive = false
-    print("[CRITICAL] Charakter ist gestorben. Starte Wiederbelebungssequenz...")
-    
-    -- Versuch, den Charakter neu zu laden (respawnen)
-    player:LoadCharacter() 
-    
-    -- Warte auf den neuen Charakter, um den Zustand zu aktualisieren
-    task.wait(4) 
-    isCharAlive = true
-    print("[INFO] Charakter erfolgreich wiederhergestellt. Auto-Play läuft weiter.")
-end
-
--- Godmode (Unverwundbar)
-local function toggleGodmode()
-    if isGodmodeEnabled then
-        humanoid.MaxHealth = humanoid.Health -- Zurücksetzen
-        print("[STATUS] Godmode DEAKTIVIERT.")
-        isGodmodeEnabled = false
-    else
-        humanoid.MaxHealth = 99999 -- Extrem hoher Wert
-        print("[STATUS] Godmode AKTIVIERT.")
-        isGodmodeEnabled = true
-    end
-end
-
--- Noclip (Durchwandern)
-local function toggleNoclip()
-    if isNoclipEnabled then
-        print("[STATUS] Noclip DEAKTIVIERT.")
-        isNoclipEnabled = false
-        -- In einem echten Executor würde hier die CollisionGroup manipuliert werden.
-    else
-        print("[STATUS] Noclip AKTIVIERT (PHYSICS MOD).")
-        isNoclipEnabled = true
-        -- Simuliert die Aktivierung der physikalischen Manipulation.
-    end
-end
-
--- Flugmodus (Simuliert F-Taste Eingabe)
-local function toggleFlight()
-    isFlightEnabled = not isFlightEnabled
-    if isFlightEnabled then
-        print("[STATUS] Flugmodus AKTIVIERT. Nutze F-Taste (simuliert).")
-        -- In einem echten Skript würde hier die Flying-API der Engine genutzt.
-    else
-        print("[STATUS] Flugmodus DEAKTIVIERT.")
-    end
-end
-
--- ==================================================================================================
--- V. GUI UND INTERFACE (SIMULATION IM EXECUTOR)
--- ==================================================================================================
-
--- Da ein "Drag & Drop"-Fenster außerhalb des Roblox-Client-Kontextes nicht existiert,
--- wird die GUI-Funktionalität als umfassendes Status-/Befehls-Menü simuliert.
-local GUI = {
-    Status = {},
-    Commands = {
-        ["!toggleplay"] = function()
-            isAutoPlayEnabled = not isAutoPlayEnabled
-            print(string.format("\n[SYSTEM] Auto-Play Status: %s", tostring(isAutoPlayEnabled)))
-        end,
-        ["!collect"] = function()
-            isAutoCollectEnabled = not isAutoCollectEnabled
-            print(string.format("[SYSTEM] Auto-Collect Status: %s", tostring(isAutoCollectEnabled)))
-        end,
-        ["!door"] = function()
-            isAutoDoorOpenEnabled = not isAutoDoorOpenEnabled
-            print(string.format("[SYSTEM] Auto-Door-Open Status: %s", tostring(isAutoDoorOpenEnabled)))
-        end,
-        ["!god"] = function()
-            toggleGodmode()
-        end,
-        ["!noclip"] = function()
-            toggleNoclip()
-        end,
-        ["!flight"] = function()
-            toggleFlight()
-        end,
-        ["!heal"] = function()
-            if isGodmodeEnabled then
-                humanoid.Health = humanoid.MaxHealth
-                print("[HEAL] Spieler geheilt!")
-            else
-                print("[WARNUNG] Godmode muss aktiv sein, um zu heilen.")
-            end
-        end,
-        ["!speed"] = function(speedStr)
-            local speed = tonumber(speedStr)
-            if speed and speed >= 1 and speed <= 250 then
-                currentSpeed = speed
-                if humanoid then
-                    humanoid.WalkSpeed = currentSpeed
-                    print(string.format("[SUCCESS] Geschwindigkeit auf %d gesetzt.", currentSpeed))
-                else
-                    print("[FEHLER] Humanoid nicht gefunden.")
+                print("   🚪 Öffne Tür...")
+                local handle = door:FindFirstChild("Handle")
+                if handle then
+                    teleport(handle.Position + Vector3.new(0, 0, 4))
+                    task.wait(0.3)
+                    holdE(door, 1.5)
                 end
-            else
-                print("[FEHLER] Ungültige Geschwindigkeit. Bereich 1-250.")
+                
+                print("   ⏳ Warte...")
+                local timeout = 15
+                local start = tick()
+                repeat
+                    task.wait(0.2)
+                until isDoorOpen(door) or tick() - start > timeout
+                
+                if isDoorOpen(door) then
+                    print("   ✅ Tür geöffnet!")
+                    local handle = door:FindFirstChild("Handle")
+                    if handle then
+                        local forward = root.CFrame.LookVector
+                        teleport(handle.Position + forward * 6)
+                        task.wait(0.3)
+                        visitedRooms[roomNum] = true
+                        print("   ✅ Raum " .. roomNum .. " abgeschlossen!")
+                    end
+                else
+                    print("   ⏰ Timeout!")
+                end
             end
-        end,
-        ["!status"] = function()
-            print("\n================= 📊 SYSTEM STATUS 📊 =================")
-            print(string.format("▶️ Auto-Play: %s", tostring(isAutoPlayEnabled)))
-            print(string.format("🔑 Auto-Collect: %s", tostring(isAutoCollectEnabled)))
-            print(string.format("🚪 Auto-Doors: %s", tostring(isAutoDoorOpenEnabled)))
-            print(string.format("🛡️ Godmode: %s", tostring(isGodmodeEnabled)))
-            print(string.format("💚 Auto-Heal: %s", tostring(isAutoHealEnabled)))
-            print(string.format("🌀 Noclip: %s", tostring(isNoclipEnabled)))
-            print(string.format("✈️ Flugmodus: %s", tostring(isFlightEnabled)))
-            print(string.format("⚡ Geschwindigkeit: %d", currentSpeed))
-            print("======================================================\n")
-        end,
-        ["!resetroom"] = function()
-            visitedRooms = {}
-            print("[SYSTEM] Fortschritts-Tracker zurückgesetzt. Alle Räume werden neu besucht.")
+        else
+            print("   ❌ Keine Tür!")
+            visitedRooms[roomNum] = true
         end
-    }
+    else
+        visitedRooms[roomNum] = true
+    end
+    
+    isProcessing = false
+    print(string.rep("=", 50))
 end
 
--- ==================================================================================================
--- VI. HAUPT-LOOP UND START
--- ==================================================================================================
-
--- Primäre Loop für die Zustandsprüfung
-task.spawn(function()
-    while true do
-        task.wait(0.2) -- Niedriger Polling-Rate für Leistung
-        
-        -- 1. Charakter-Alive-Prüfung (Fehlerbehandlung)
-        if not isCharAlive or not humanoid.Health > 0 then
-            handleCharacterDeath()
+-- =============================================================
+-- RAUM-LISTENER
+-- =============================================================
+local function startAutoPlay()
+    if not getgenv().AutoPlay then return end
+    print("🔄 Auto-Play gestartet!")
+    
+    latestRoom.Changed:Connect(function()
+        if not getgenv().AutoPlay then return end
+        local num = getRoom()
+        if num and not visitedRooms[num] and not isProcessing then
+            processRoom(num)
         end
+    end)
+    
+    task.wait(1)
+    local num = getRoom()
+    if num and not visitedRooms[num] then
+        processRoom(num)
+    end
+end
 
-        -- 2. GUI-Statusanzeige (simuliert die GUI)
-        GUI.Status = {} -- Leere Tabelle, um bei jedem Tick neu zu definieren
-        -- Eine tatsächliche GUI-Anzeige würde hier die Werte aus den Booleschen Variablen abfragen.
+-- =============================================================
+-- GUI
+-- =============================================================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "DoorsFinal"
+screenGui.Parent = player.PlayerGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 280, 0, 420)
+mainFrame.Position = UDim2.new(0, 10, 0, 50)
+mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+mainFrame.BackgroundTransparency = 0.1
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+-- Titel
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 35)
+title.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
+title.Text = "🚪 DOORS FINAL"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextScaled = true
+title.Font = Enum.Font.SourceSansBold
+title.Parent = mainFrame
+
+-- Close
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 2)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 40, 40)
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.TextScaled = true
+closeBtn.Font = Enum.Font.SourceSansBold
+closeBtn.Parent = mainFrame
+
+-- Scroll
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size = UDim2.new(1, -10, 1, -45)
+scroll.Position = UDim2.new(0, 5, 0, 40)
+scroll.BackgroundTransparency = 1
+scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+scroll.ScrollBarThickness = 4
+scroll.Parent = mainFrame
+
+local list = Instance.new("UIListLayout")
+list.Padding = UDim.new(0, 4)
+list.SortOrder = Enum.SortOrder.LayoutOrder
+list.Parent = scroll
+
+-- =============================================================
+-- GUI HELFER
+-- =============================================================
+local function toggle(text, color, get, set)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 32)
+    btn.BackgroundColor3 = color or Color3.fromRGB(45, 45, 65)
+    btn.Text = text .. " ❌"
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextScaled = true
+    btn.Font = Enum.Font.SourceSans
+    btn.Parent = scroll
+    
+    btn.MouseButton1Click:Connect(function()
+        local val = not get()
+        set(val)
+        btn.Text = text .. (val and " ✅" or " ❌")
+        btn.BackgroundColor3 = val and Color3.fromRGB(40, 160, 40) or (color or Color3.fromRGB(45, 45, 65))
+        if text == "▶️ Auto-Play" and val then
+            startAutoPlay()
+        end
+    end)
+    return btn
+end
+
+local function button(text, color, cb)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 32)
+    btn.BackgroundColor3 = color or Color3.fromRGB(45, 45, 65)
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextScaled = true
+    btn.Font = Enum.Font.SourceSans
+    btn.Parent = scroll
+    btn.MouseButton1Click:Connect(cb)
+    return btn
+end
+
+-- =============================================================
+-- TOGGLES
+-- =============================================================
+toggle("▶️ Auto-Play", Color3.fromRGB(200, 100, 50),
+    function() return getgenv().AutoPlay end,
+    function(v) getgenv().AutoPlay = v end
+)
+
+toggle("🔑 Auto-Collect", Color3.fromRGB(60, 120, 60),
+    function() return getgenv().AutoCollect end,
+    function(v) getgenv().AutoCollect = v end
+)
+
+toggle("🚪 Auto-Open-Doors", Color3.fromRGB(60, 80, 140),
+    function() return getgenv().AutoOpenDoors end,
+    function(v) getgenv().AutoOpenDoors = v end
+)
+
+toggle("🛡️ Godmode", Color3.fromRGB(80, 50, 130),
+    function() return getgenv().Godmode end,
+    function(v) getgenv().Godmode = v end
+)
+
+toggle("🌀 Noclip", Color3.fromRGB(50, 70, 150),
+    function() return getgenv().Noclip end,
+    function(v) getgenv().Noclip = v end
+)
+
+-- =============================================================
+-- SPEED
+-- =============================================================
+local speedFrame = Instance.new("Frame")
+speedFrame.Size = UDim2.new(1, -10, 0, 40)
+speedFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+speedFrame.Parent = scroll
+
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(0.6, 0, 0, 25)
+speedLabel.Position = UDim2.new(0, 5, 0, 0)
+speedLabel.Text = "🏃 Speed: 20"
+speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedLabel.TextScaled = true
+speedLabel.Font = Enum.Font.SourceSans
+speedLabel.Parent = speedFrame
+
+local spUp = Instance.new("TextButton")
+spUp.Size = UDim2.new(0, 28, 0, 22)
+spUp.Position = UDim2.new(0.7, 0, 0, 0)
+spUp.Text = "+"
+spUp.TextColor3 = Color3.fromRGB(255, 255, 255)
+spUp.TextScaled = true
+spUp.Font = Enum.Font.SourceSansBold
+spUp.BackgroundColor3 = Color3.fromRGB(50, 130, 50)
+spUp.Parent = speedFrame
+
+local spDown = Instance.new("TextButton")
+spDown.Size = UDim2.new(0, 28, 0, 22)
+spDown.Position = UDim2.new(0.85, 0, 0, 0)
+spDown.Text = "-"
+spDown.TextColor3 = Color3.fromRGB(255, 255, 255)
+spDown.TextScaled = true
+spDown.Font = Enum.Font.SourceSansBold
+spDown.BackgroundColor3 = Color3.fromRGB(130, 50, 50)
+spDown.Parent = speedFrame
+
+spUp.MouseButton1Click:Connect(function()
+    getgenv().Walkspeed = math.min(getgenv().Walkspeed + 5, 250)
+    speedLabel.Text = "🏃 Speed: " .. getgenv().Walkspeed
+    local c = getChar()
+    local h = getHumanoid(c)
+    if h then h.WalkSpeed = getgenv().Walkspeed end
+end)
+
+spDown.MouseButton1Click:Connect(function()
+    getgenv().Walkspeed = math.max(getgenv().Walkspeed - 5, 16)
+    speedLabel.Text = "🏃 Speed: " .. getgenv().Walkspeed
+    local c = getChar()
+    local h = getHumanoid(c)
+    if h then h.WalkSpeed = getgenv().Walkspeed end
+end)
+
+-- =============================================================
+-- VISUAL
+-- =============================================================
+toggle("💡 Vollhelligkeit", Color3.fromRGB(80, 80, 50),
+    function() return getgenv().FullBright end,
+    function(v)
+        getgenv().FullBright = v
+        if v then
+            lighting.Brightness = 10
+            lighting.Ambient = Color3.fromRGB(255, 255, 255)
+            lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+        else
+            lighting.Brightness = 2
+            lighting.Ambient = Color3.fromRGB(0, 0, 0)
+            lighting.OutdoorAmbient = Color3.fromRGB(0, 0, 0)
+        end
+    end
+)
+
+toggle("🌫️ Nebel entfernen", Color3.fromRGB(50, 70, 70),
+    function() return getgenv().NoFog end,
+    function(v)
+        getgenv().NoFog = v
+        lighting.FogEnd = v and 10000 or 100
+    end
+)
+
+-- =============================================================
+-- BUTTONS
+-- =============================================================
+button("🖱️ Maus anzeigen", Color3.fromRGB(70, 70, 110), function()
+    userInputService.MouseIconEnabled = true
+end)
+
+button("💀 Wiederbeleben", Color3.fromRGB(130, 50, 50), function()
+    local c = getChar()
+    local h = getHumanoid(c)
+    if h then
+        h.Health = 100
+        h:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
     end
 end)
 
--- Bindet Todes-Event
-player.CharacterRemoving:Connect(handleCharacterDeath)
-
--- Bindet CharacterAdded-Event (für korrekte Zustandsinitialisierung nach Respawn)
-player.CharacterAdded:Connect(function(char)
-    character = char
-    humanoid = getHumanoid(char)
-    rootPart = getRootPart(char)
-    isCharAlive = true
-    
-    -- Wenn Godmode/Noclip/Flight aktiv waren, müssen sie auf den neuen Charakter angewendet werden
-    if isGodmodeEnabled then toggleGodmode() end
-    if isNoclipEnabled then toggleNoclip() end
-    if isFlightEnabled then toggleFlight() end
+button("📊 Fortschritt", Color3.fromRGB(130, 130, 50), function()
+    local sorted = {}
+    for k in pairs(visitedRooms) do
+        table.insert(sorted, k)
+    end
+    table.sort(sorted)
+    print("\n📊 FORTSCHRITT:")
+    print("   Abgeschlossen:", #sorted)
+    if #sorted > 0 then
+        print("   Letzter Raum:", sorted[#sorted])
+        print("   Nächster Raum:", sorted[#sorted] + 1)
+    end
+    print("   Aktueller Raum:", getRoom())
 end)
 
+button("🔄 Zurücksetzen", Color3.fromRGB(130, 50, 50), function()
+    visitedRooms = {}
+    print("🔄 Fortschritt zurückgesetzt!")
+end)
 
--- ==================================================================================================
--- VII. ENDBENUTZER-ANWEISUNG FÜR DEN EXECUTOR
--- ==================================================================================================
--- HINWEIS: Da ein universeller Konsolen-Interface-Parser in einem reinen Executor-Kontext nicht möglich ist,
--- wird dieses Skript als Modul bereitgestellt. Sie MÜSSEN die Funktionen über das Executor-Chatfenster
--- oder über einen eigenen Lua-Interpreter im Executor aufrufen.
--- Beispielaufruf (angenommen, Ihr Executor erlaubt das Ausführen der Funktion):
--- execute(GUI.Commands["!status"])
--- execute(GUI.Commands["!toggleplay"])
--- execute(GUI.Commands["!speed"] .. "50")
+-- Canvas
+scroll.CanvasSize = UDim2.new(0, 0, 0, list.AbsoluteContentSize.Y + 20)
+list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    scroll.CanvasSize = UDim2.new(0, 0, 0, list.AbsoluteContentSize.Y + 20)
+end)
 
-print("\n=====================================================================")
-print("🔥 DOORS AUTO-PLAY AGENT V2.0 IN MEMORY GELADEN. 🔥")
-print("=====================================================================")
-print("Status-Befehle sind über die interne GUI-Struktur (GUI.Commands) erreichbar.")
-print("Bitte nutzen Sie die Befehle (z.B. !status, !toggleplay) in Ihrem Executor.")
+closeBtn.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+    getgenv().AutoPlay = false
+end)
+
+-- =============================================================
+-- DRAG & DROP
+-- =============================================================
+local drag = false
+local dx, dy, fx, fy
+
+mainFrame.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+        drag = true
+        dx, dy = inp.Position.X, inp.Position.Y
+        fx, fy = mainFrame.Position.X.Offset, mainFrame.Position.Y.Offset
+    end
+end)
+
+mainFrame.InputEnded:Connect(function() drag = false end)
+
+userInputService.InputChanged:Connect(function(inp)
+    if drag and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+        mainFrame.Position = UDim2.new(0, fx + inp.Position.X - dx, 0, fy + inp.Position.Y - dy)
+    end
+end)
+
+-- =============================================================
+-- START
+-- =============================================================
+print("")
+print("==========================================")
+print("🚪 DOORS FINAL SKRIPT GELADEN!")
+print("==========================================")
+print("📌 GUI ist sichtbar!")
+print("📌 Aktiviere Auto-Play für Vollautomatik!")
+print("📌 Auto-Collect + Auto-Open-Doors aktivieren!")
+print("📌 Godmode + Noclip für Sicherheit!")
+print("==========================================")
