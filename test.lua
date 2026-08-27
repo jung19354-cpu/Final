@@ -1,18 +1,16 @@
 -- ==========================================
--- DOORS AUTO-PLAY SKRIPT (VOLLAUTOMATIK)
+-- DOORS AUTO-PLAY V2 (VERBESSERTE LOGIK)
 -- KEINE BIBLIOTHEKEN - KEINE EXTERNEN LOADS
 -- ==========================================
 
-print("🚀 Lade Doors Auto-Play Script...")
+print("🚀 Lade Doors Auto-Play V2...")
 
 local player = game.Players.LocalPlayer
 local char = player.Character or player.CharacterAdded:Wait()
 local humanoid = char:WaitForChild("Humanoid")
 local userInputService = game:GetService("UserInputService")
-local runService = game:GetService("RunService")
 local lighting = game:GetService("Lighting")
-local tweenService = game:GetService("TweenService")
-
+local runService = game:GetService("RunService")
 
 -- ==========================================
 -- STATUS-VARIABLEN
@@ -31,225 +29,303 @@ getgenv().NoFog = false
 getgenv().AutoHeal = false
 
 -- ==========================================
--- HELFER-FUNKTIONEN
+-- VERBESSERTE SUCH-FUNKTIONEN
 -- ==========================================
 
--- Nächste Tür finden
+-- Alle Objekte im Spiel finden
+local function getAllObjects()
+    local objects = {}
+    for _, obj in pairs(game.Workspace:GetDescendants()) do
+        table.insert(objects, obj)
+    end
+    return objects
+end
+
+-- Nächste Tür finden (verbessert)
 local function findNearestDoor()
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
     local nearest = nil
     local nearestDist = math.huge
-    for _, obj in pairs(game.Workspace:GetDescendants()) do
-        if obj.Name == "Door" and obj:IsA("Model") then
-            local handle = obj:FindFirstChild("Handle")
-            if handle and handle:IsA("BasePart") then
-                local dist = (root.Position - handle.Position).Magnitude
-                if dist < nearestDist then
-                    nearestDist = dist
-                    nearest = obj
+    
+    for _, obj in pairs(getAllObjects()) do
+        -- Verschiedene mögliche Tür-Namen
+        if obj.Name == "Door" or obj.Name == "DoorModel" or obj.Name == "DoorHandle" or obj.Name == "DoorPart" then
+            if obj:IsA("Model") or obj:IsA("BasePart") then
+                local pos = obj:IsA("Model") and (obj:FindFirstChild("Handle") and obj.Handle.Position or obj.PrimaryPart and obj.PrimaryPart.Position) or obj.Position
+                if pos then
+                    local dist = (root.Position - pos).Magnitude
+                    if dist < nearestDist and dist > 1 then
+                        nearestDist = dist
+                        nearest = obj
+                    end
                 end
             end
         end
     end
-    return nearest
+    return nearest, nearestDist
 end
 
--- Nächsten Schlüssel finden
+-- Nächsten Schlüssel finden (verbessert)
 local function findNearestKey()
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
     local nearest = nil
     local nearestDist = math.huge
-    for _, obj in pairs(game.Workspace:GetDescendants()) do
-        if obj.Name == "Key" and obj:IsA("BasePart") and obj.Parent ~= char then
-            local dist = (root.Position - obj.Position).Magnitude
-            if dist < nearestDist then
-                nearestDist = dist
-                nearest = obj
+    
+    for _, obj in pairs(getAllObjects()) do
+        if obj.Name == "Key" or obj.Name == "KeyPart" or obj.Name == "KeyModel" then
+            if obj:IsA("BasePart") or obj:IsA("Model") then
+                local pos = obj:IsA("Model") and (obj:FindFirstChild("Handle") and obj.Handle.Position or obj.PrimaryPart and obj.PrimaryPart.Position) or obj.Position
+                if pos and obj.Parent ~= char then
+                    local dist = (root.Position - pos).Magnitude
+                    if dist < nearestDist and dist > 1 then
+                        nearestDist = dist
+                        nearest = obj
+                    end
+                end
             end
         end
     end
-    return nearest
+    return nearest, nearestDist
 end
 
--- Nächsten Knob (Geld) finden
+-- Nächsten Knob finden (verbessert)
 local function findNearestKnob()
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
     local nearest = nil
     local nearestDist = math.huge
-    for _, obj in pairs(game.Workspace:GetDescendants()) do
-        if obj.Name == "Knob" and obj:IsA("BasePart") and obj.Parent ~= char then
-            local dist = (root.Position - obj.Position).Magnitude
-            if dist < nearestDist then
-                nearestDist = dist
-                nearest = obj
+    
+    for _, obj in pairs(getAllObjects()) do
+        if obj.Name == "Knob" or obj.Name == "KnobPart" or obj.Name == "Money" then
+            if obj:IsA("BasePart") or obj:IsA("Model") then
+                local pos = obj:IsA("Model") and (obj:FindFirstChild("Handle") and obj.Handle.Position or obj.PrimaryPart and obj.PrimaryPart.Position) or obj.Position
+                if pos and obj.Parent ~= char then
+                    local dist = (root.Position - pos).Magnitude
+                    if dist < nearestDist and dist > 1 then
+                        nearestDist = dist
+                        nearest = obj
+                    end
+                end
             end
         end
     end
-    return nearest
+    return nearest, nearestDist
 end
+
+-- ==========================================
+-- TELEPORT & INTERAKTION
+-- ==========================================
 
 -- Teleport zu Position
 local function teleportTo(position)
     local root = char:FindFirstChild("HumanoidRootPart")
-    if root then
+    if root and position then
         root.CFrame = CFrame.new(position)
     end
 end
 
--- Tür öffnen (Remote-Event)
+-- Tür öffnen (verbessert)
 local function openDoor(door)
     if not door then return end
+    
+    -- Versuche verschiedene Methoden
+    -- 1. Remote-Event "Open"
     local remote = door:FindFirstChild("Open")
     if remote then
         remote:FireServer()
+        return
     end
+    
+    -- 2. Remote-Event "DoorOpen"
+    local remote2 = door:FindFirstChild("DoorOpen")
+    if remote2 then
+        remote2:FireServer()
+        return
+    end
+    
+    -- 3. ProximityPrompt an Handle
     local handle = door:FindFirstChild("Handle")
     if handle then
-        -- ProximityPrompt versuchen
         local prompt = handle:FindFirstChild("ProximityPrompt")
+        if prompt then
+            prompt:FireServer()
+            return
+        end
+    end
+    
+    -- 4. Direkt an der Tür (falls BasePart)
+    if door:IsA("BasePart") then
+        local prompt = door:FindFirstChild("ProximityPrompt")
         if prompt then
             prompt:FireServer()
         end
     end
 end
 
--- Gegenstand aufheben
+-- Gegenstand aufheben (verbessert)
 local function collectItem(item)
     if not item then return end
+    
+    -- Versuche verschiedene Methoden
     local prompt = item:FindFirstChild("ProximityPrompt")
     if prompt then
         prompt:FireServer()
+        return
     end
-    -- Falls es ein Remote-Event ist
+    
     local collect = item:FindFirstChild("Collect")
     if collect then
         collect:FireServer()
+        return
+    end
+    
+    local pickup = item:FindFirstChild("Pickup")
+    if pickup then
+        pickup:FireServer()
     end
 end
 
 -- ==========================================
--- AUTO-PLAY HAUPTLOGIK
+-- AUTO-PLAY HAUPTLOGIK (VERBESSERT)
 -- ==========================================
+
 local function startAutoPlay()
     if not getgenv().AutoPlay then return end
     
     spawn(function()
+        print("🔄 Auto-Play gestartet!")
+        
         while getgenv().AutoPlay do
-            wait(0.3)
+            wait(0.5)
             
-            -- GODMODE (falls aktiv)
+            -- Aktualisiere Charakter
+            char = player.Character
+            if not char then 
+                wait(1)
+                char = player.Character
+                if not char then
+                    player:LoadCharacter()
+                    wait(2)
+                    char = player.Character
+                end
+                if not char then 
+                    print("❌ Kein Charakter gefunden!")
+                    continue 
+                end
+            end
+            
+            humanoid = char:FindFirstChild("Humanoid")
+            if not humanoid then continue end
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if not root then continue end
+            
+            -- ==========================================
+            -- 1. GODMODE
+            -- ==========================================
             if getgenv().Godmode then
-                if char and char:FindFirstChild("Humanoid") then
-                    char.Humanoid.Health = 100
-                    char.Humanoid.MaxHealth = 100
-                end
+                humanoid.Health = 100
+                humanoid.MaxHealth = 100
             end
             
-            -- AUTO-HEAL
-            if getgenv().AutoHeal then
-                if char and char:FindFirstChild("Humanoid") then
-                    if char.Humanoid.Health < 80 then
-                        char.Humanoid.Health = 100
-                    end
-                end
+            -- ==========================================
+            -- 2. AUTO-HEAL
+            -- ==========================================
+            if getgenv().AutoHeal and humanoid.Health < 80 then
+                humanoid.Health = 100
             end
             
-            -- NOCLIP (falls aktiv)
+            -- ==========================================
+            -- 3. NOCLIP
+            -- ==========================================
             if getgenv().Noclip then
-                if char then
-                    for _, part in pairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                            part.CanCollide = false
-                        end
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
                     end
                 end
             end
             
-            -- GESCHWINDIGKEIT
-            if char and char:FindFirstChild("Humanoid") then
-                char.Humanoid.WalkSpeed = getgenv().Walkspeed
-            end
+            -- ==========================================
+            -- 4. GESCHWINDIGKEIT
+            -- ==========================================
+            humanoid.WalkSpeed = getgenv().Walkspeed
             
-            -- 1. SCHLÜSSEL SAMMELN (Priorität 1)
+            -- ==========================================
+            -- 5. AUTO-COLLECT (Schlüssel & Knobs)
+            -- ==========================================
             if getgenv().AutoCollect then
-                local key = findNearestKey()
-                if key then
-                    local root = char:FindFirstChild("HumanoidRootPart")
-                    if root then
-                        local dist = (root.Position - key.Position).Magnitude
-                        if dist < 50 then
-                            -- Teleport zum Schlüssel
-                            root.CFrame = key.CFrame + Vector3.new(0, 1, 0)
-                            wait(0.1)
-                            collectItem(key)
-                            wait(0.2)
-                        end
-                    end
+                -- Schlüssel suchen
+                local key, keyDist = findNearestKey()
+                if key and keyDist and keyDist < 60 then
+                    teleportTo(key:IsA("Model") and (key:FindFirstChild("Handle") and key.Handle.Position or key.PrimaryPart and key.PrimaryPart.Position) or key.Position)
+                    wait(0.15)
+                    collectItem(key)
+                    wait(0.2)
+                    print("🔑 Schlüssel eingesammelt!")
                 end
                 
-                -- 2. KNOBS SAMMELN
-                local knob = findNearestKnob()
-                if knob then
-                    local root = char:FindFirstChild("HumanoidRootPart")
-                    if root then
-                        local dist = (root.Position - knob.Position).Magnitude
-                        if dist < 50 then
-                            root.CFrame = knob.CFrame + Vector3.new(0, 1, 0)
-                            wait(0.1)
-                            collectItem(knob)
-                            wait(0.2)
-                        end
-                    end
+                -- Knobs suchen
+                local knob, knobDist = findNearestKnob()
+                if knob and knobDist and knobDist < 60 then
+                    teleportTo(knob:IsA("Model") and (knob:FindFirstChild("Handle") and knob.Handle.Position or knob.PrimaryPart and knob.PrimaryPart.Position) or knob.Position)
+                    wait(0.15)
+                    collectItem(knob)
+                    wait(0.2)
+                    print("💰 Knob eingesammelt!")
                 end
             end
             
-            -- 3. TÜREN ÖFFNEN
+            -- ==========================================
+            -- 6. AUTO-OPEN-DOORS
+            -- ==========================================
             if getgenv().AutoOpenDoors or getgenv().AutoRooms then
-                local door = findNearestDoor()
-                if door then
-                    local root = char:FindFirstChild("HumanoidRootPart")
-                    if root then
-                        local handle = door:FindFirstChild("Handle")
-                        if handle then
-                            local dist = (root.Position - handle.Position).Magnitude
-                            -- Wenn Tür in der Nähe, öffnen
-                            if dist < 30 then
-                                openDoor(door)
-                                -- Zur Tür laufen
-                                root.CFrame = handle.CFrame + Vector3.new(0, 0, 5)
-                                wait(0.2)
-                            elseif dist < 200 then
-                                -- Zur Tür laufen
-                                root.CFrame = handle.CFrame + Vector3.new(0, 0, 5)
-                                wait(0.1)
-                            end
-                        end
+                local door, doorDist = findNearestDoor()
+                if door and doorDist then
+                    -- Wenn Tür nah, öffnen
+                    if doorDist < 20 then
+                        openDoor(door)
+                        print("🚪 Tür geöffnet!")
+                        wait(0.3)
                     end
+                    
+                    -- Zur Tür laufen (wenn weiter weg)
+                    local doorPos = door:IsA("Model") and (door:FindFirstChild("Handle") and door.Handle.Position or door.PrimaryPart and door.PrimaryPart.Position) or door.Position
+                    if doorPos then
+                        teleportTo(doorPos + Vector3.new(0, 0, 5))
+                        wait(0.2)
+                    end
+                else
+                    -- Keine Tür gefunden -> etwas laufen
+                    root.CFrame = root.CFrame + root.CFrame.LookVector * 5
+                    wait(0.1)
                 end
             end
             
-            -- 4. AUTO-ROOMS (für A-1000)
+            -- ==========================================
+            -- 7. AUTO-ROOMS (A-1000 Farm)
+            -- ==========================================
             if getgenv().AutoRooms then
-                -- Suche nach einem "Rooms"-Teleporter oder nächster Tür
+                -- Suche nach Rooms-spezifischen Objekten
                 for _, obj in pairs(game.Workspace:GetDescendants()) do
-                    if obj.Name == "Room" and obj:IsA("Model") then
-                        local handle = obj:FindFirstChild("Handle")
-                        if handle then
-                            local root = char:FindFirstChild("HumanoidRootPart")
-                            if root then
-                                root.CFrame = handle.CFrame + Vector3.new(0, 0, 5)
+                    if obj.Name == "RoomDoor" or obj.Name == "Room" then
+                        if obj:IsA("Model") or obj:IsA("BasePart") then
+                            local pos = obj:IsA("Model") and (obj:FindFirstChild("Handle") and obj.Handle.Position or obj.PrimaryPart and obj.PrimaryPart.Position) or obj.Position
+                            if pos then
+                                teleportTo(pos + Vector3.new(0, 0, 3))
                                 wait(0.1)
-                                local remote = obj:FindFirstChild("Open")
-                                if remote then remote:FireServer() end
+                                openDoor(obj)
+                                wait(0.2)
+                                break
                             end
                         end
                     end
                 end
             end
         end
+        
+        print("⏹️ Auto-Play gestoppt!")
     end)
 end
 
@@ -257,30 +333,27 @@ end
 -- GUI ERSTELLEN
 -- ==========================================
 
--- Haupt-GUI
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "DoorsAutoPlayGUI"
+screenGui.Name = "DoorsAutoPlayV2"
 screenGui.Parent = player.PlayerGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 300, 0, 500)
+mainFrame.Size = UDim2.new(0, 300, 0, 520)
 mainFrame.Position = UDim2.new(0, 10, 0, 50)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
 mainFrame.BackgroundTransparency = 0.15
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
 
--- Titel
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 40)
 title.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
-title.Text = "🤖 DOORS AUTO-PLAY"
+title.Text = "🤖 AUTO-PLAY V2"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextScaled = true
 title.Font = Enum.Font.SourceSansBold
 title.Parent = mainFrame
 
--- Close
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 30, 0, 30)
 closeBtn.Position = UDim2.new(1, -35, 0, 2)
@@ -291,7 +364,6 @@ closeBtn.TextScaled = true
 closeBtn.Font = Enum.Font.SourceSansBold
 closeBtn.Parent = mainFrame
 
--- Scroll
 local scrollFrame = Instance.new("ScrollingFrame")
 scrollFrame.Size = UDim2.new(1, -10, 1, -50)
 scrollFrame.Position = UDim2.new(0, 5, 0, 45)
@@ -323,7 +395,6 @@ local function createToggle(text, color, getVal, setVal)
         setVal(newVal)
         btn.Text = text .. (newVal and " ✅" or " ❌")
         btn.BackgroundColor3 = newVal and Color3.fromRGB(40, 160, 40) or (color or Color3.fromRGB(50, 50, 70))
-        -- Wenn AutoPlay aktiviert wird, starte die Logik
         if text == "▶️ Auto-Play" and newVal then
             startAutoPlay()
         end
@@ -345,52 +416,44 @@ local function createButton(text, color, callback)
 end
 
 -- ==========================================
--- TOGGLES ERSTELLEN
+-- TOGGLES
 -- ==========================================
 
--- AUTO-PLAY (Haupttoggle)
 createToggle("▶️ Auto-Play", Color3.fromRGB(200, 100, 50),
     function() return getgenv().AutoPlay end,
     function(v) getgenv().AutoPlay = v end
 )
 
--- AUTO-COLLECT (Schlüssel & Knobs)
-createToggle("🔑 Auto-Collect (Schlüssel/Geld)", Color3.fromRGB(60, 120, 60),
+createToggle("🔑 Auto-Collect", Color3.fromRGB(60, 120, 60),
     function() return getgenv().AutoCollect end,
     function(v) getgenv().AutoCollect = v end
 )
 
--- AUTO-OPEN-DOORS
 createToggle("🚪 Auto-Open-Doors", Color3.fromRGB(60, 80, 140),
     function() return getgenv().AutoOpenDoors end,
     function(v) getgenv().AutoOpenDoors = v end
 )
 
--- AUTO-ROOMS (A-1000 Farm)
 createToggle("🏚️ Auto-Rooms (A-1000)", Color3.fromRGB(140, 80, 60),
     function() return getgenv().AutoRooms end,
     function(v) getgenv().AutoRooms = v end
 )
 
--- GODMODE
 createToggle("🛡️ Godmode", Color3.fromRGB(80, 50, 130),
     function() return getgenv().Godmode end,
     function(v) getgenv().Godmode = v end
 )
 
--- AUTO-HEAL
 createToggle("💚 Auto-Heal", Color3.fromRGB(60, 160, 60),
     function() return getgenv().AutoHeal end,
     function(v) getgenv().AutoHeal = v end
 )
 
--- NOCLIP
 createToggle("🌀 Noclip", Color3.fromRGB(50, 70, 150),
     function() return getgenv().Noclip end,
     function(v) getgenv().Noclip = v end
 )
 
--- INFINITE JUMP
 createToggle("🦘 Unendlicher Sprung", Color3.fromRGB(60, 130, 80),
     function() return getgenv().InfiniteJump end,
     function(v)
@@ -408,7 +471,6 @@ createToggle("🦘 Unendlicher Sprung", Color3.fromRGB(60, 130, 80),
     end
 )
 
--- FLY MODE
 createToggle("✈️ Flugmodus (F)", Color3.fromRGB(70, 110, 180),
     function() return getgenv().FlyMode end,
     function(v)
@@ -432,7 +494,7 @@ createToggle("✈️ Flugmodus (F)", Color3.fromRGB(70, 110, 180),
 )
 
 -- ==========================================
--- SPEED SLIDER
+-- SPEED
 -- ==========================================
 local speedFrame = Instance.new("Frame")
 speedFrame.Size = UDim2.new(1, -10, 0, 45)
@@ -487,7 +549,7 @@ spDown.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- VISUAL TOGGLES
+-- VISUAL
 -- ==========================================
 createToggle("💡 Vollhelligkeit", Color3.fromRGB(80, 80, 50),
     function() return getgenv().FullBright end,
@@ -529,35 +591,31 @@ createButton("💀 Wiederbeleben", Color3.fromRGB(130, 50, 50), function()
 end)
 
 createButton("🚪 Zur nächsten Tür", Color3.fromRGB(50, 70, 130), function()
-    local door = findNearestDoor()
+    local door, dist = findNearestDoor()
     if door then
-        local handle = door:FindFirstChild("Handle")
-        if handle then
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if root then
-                root.CFrame = handle.CFrame + Vector3.new(0, 0, 5)
-            end
+        local pos = door:IsA("Model") and (door:FindFirstChild("Handle") and door.Handle.Position or door.PrimaryPart and door.PrimaryPart.Position) or door.Position
+        if pos then
+            teleportTo(pos + Vector3.new(0, 0, 5))
         end
     end
 end)
 
 createButton("📦 Schlüssel suchen", Color3.fromRGB(130, 130, 50), function()
-    local key = findNearestKey()
+    local key, dist = findNearestKey()
     if key then
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if root then
-            root.CFrame = key.CFrame + Vector3.new(0, 1, 0)
+        local pos = key:IsA("Model") and (key:FindFirstChild("Handle") and key.Handle.Position or key.PrimaryPart and key.PrimaryPart.Position) or key.Position
+        if pos then
+            teleportTo(pos + Vector3.new(0, 1, 0))
         end
     end
 end)
 
--- Canvas aktualisieren
+-- Canvas
 scrollFrame.CanvasSize = UDim2.new(0, 0, 0, uiList.AbsoluteContentSize.Y + 20)
 uiList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     scrollFrame.CanvasSize = UDim2.new(0, 0, 0, uiList.AbsoluteContentSize.Y + 20)
 end)
 
--- Close
 closeBtn.MouseButton1Click:Connect(function()
     screenGui:Destroy()
     getgenv().AutoPlay = false
@@ -587,9 +645,5 @@ userInputService.InputChanged:Connect(function(inp)
     end
 end)
 
--- ==========================================
--- START-MELDUNG
--- ==========================================
-print("✅ Doors Auto-Play Script geladen!")
+print("✅ Auto-Play V2 geladen!")
 print("📌 Aktiviere 'Auto-Play' für Vollautomatik!")
-print("📌 Toggles: Auto-Collect, Auto-Open-Doors, Auto-Rooms")
