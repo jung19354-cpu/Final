@@ -11,9 +11,6 @@ local userInputService = game:GetService("UserInputService")
 local lighting = game:GetService("Lighting")
 local replicatedStorage = game:GetService("ReplicatedStorage")
 
-
-
-
 -- ==========================================
 -- STATUS
 -- ==========================================
