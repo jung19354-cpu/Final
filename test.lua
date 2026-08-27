@@ -1,39 +1,19 @@
 -- ==========================================
--- DOORS AUTO-FARM SCRIPT (VOLLSTÄNDIG)
--- KEIN LOADSTRING - DIREKT AUSFÜHRBAR
+-- DOORS AUTO-FARM SCRIPT (OHNE BIBLIOTHEKEN)
+-- KOMPLETT EIGENSTÄNDIG - KEINE EXTERNEN LOADS
 -- ==========================================
 
-print("🚀 Lade Doors Auto-Farm Script...")
+print("🚀 Lade Doors Auto-Farm Script (ohne Bibliotheken)...")
 
 -- ==========================================
--- 1. ORIONLIB LADEN (GUI-BIBLIOTHEK)
--- ==========================================
-local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
-if not OrionLib then
-    OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/SindubsMini/doors-script/main/Doors/source%20(OrionLib)')))()
-end
-
--- ==========================================
--- 2. PRÜFEN OB WIR IN DOORS SIND
--- ==========================================
-if game.PlaceId ~= 6516141723 and game.PlaceId ~= 6839171747 then
-    OrionLib:MakeNotification({
-        Name = "❌ Falsches Spiel!",
-        Content = "Bitte starte dieses Skript nur in DOORS!",
-        Image = "rbxassetid://4483345998",
-        Time = 5
-    })
-    return
-end
-
--- ==========================================
--- 3. VARIABLEN
+-- 1. VARIABLEN
 -- ==========================================
 local player = game.Players.LocalPlayer
 local char = player.Character or player.CharacterAdded:Wait()
 local humanoid = char:WaitForChild("Humanoid")
 local runService = game:GetService("RunService")
 local userInputService = game:GetService("UserInputService")
+local lighting = game:GetService("Lighting")
 
 -- Globale Status-Variablen
 getgenv().Godmode = false
@@ -41,149 +21,120 @@ getgenv().InfiniteJump = false
 getgenv().Noclip = false
 getgenv().FlyMode = false
 getgenv().AutoFarmRooms = false
-getgenv().AutoOpenDoors = false
 getgenv().Walkspeed = 16
+getgenv().ESPEnabled = false
 
 -- ==========================================
--- 4. GUI ERSTELLEN
+-- 2. GUI ERSTELLEN (OHNE BIBLIOTHEK)
 -- ==========================================
-local Window = OrionLib:MakeWindow({
-    Name = "🔥 Doors Auto-Farm",
-    HidePremium = false,
-    SaveConfig = true,
-    ConfigFolder = "DoorsAutoFarm"
-})
+
+-- Haupt-ScreenGui erstellen
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "DoorsAutoFarmGUI"
+screenGui.Parent = player.PlayerGui
+
+-- Hintergrund-Frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 300, 0, 450)
+mainFrame.Position = UDim2.new(0, 10, 0, 50)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+mainFrame.BackgroundTransparency = 0.2
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+-- Titel
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 35)
+title.Position = UDim2.new(0, 0, 0, 0)
+title.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+title.BackgroundTransparency = 0.5
+title.Text = "🔥 DOORS AUTO-FARM"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextScaled = true
+title.Font = Enum.Font.SourceSansBold
+title.Parent = mainFrame
+
+-- Close-Button
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 2)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.TextScaled = true
+closeBtn.Font = Enum.Font.SourceSansBold
+closeBtn.Parent = mainFrame
+
+-- Scroll-Frame für Buttons
+local scrollFrame = Instance.new("ScrollingFrame")
+scrollFrame.Size = UDim2.new(1, -10, 1, -45)
+scrollFrame.Position = UDim2.new(0, 5, 0, 40)
+scrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+scrollFrame.BackgroundTransparency = 1
+scrollFrame.BorderSizePixel = 0
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollFrame.ScrollBarThickness = 4
+scrollFrame.Parent = mainFrame
+
+-- UIListLayout für Buttons
+local uiList = Instance.new("UIListLayout")
+uiList.Padding = UDim.new(0, 4)
+uiList.SortOrder = Enum.SortOrder.LayoutOrder
+uiList.Parent = scrollFrame
 
 -- ==========================================
--- 5. TAB: AUTO-FARM
+-- 3. FUNKTION: BUTTON ERSTELLEN
 -- ==========================================
-local FarmTab = Window:MakeTab({
-    Name = "🤖 Auto-Farm",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
+local function createButton(text, color, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 35)
+    btn.BackgroundColor3 = color or Color3.fromRGB(60, 60, 80)
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextScaled = true
+    btn.Font = Enum.Font.SourceSans
+    btn.Parent = scrollFrame
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
 
--- Auto Rooms (Rooms-Modus)
-FarmTab:AddToggle({
-    Name = "🚪 Auto Rooms (A-1000 Farm)",
-    Default = false,
-    Callback = function(Value)
-        getgenv().AutoFarmRooms = Value
-        if Value then
-            FarmTab:AddNotification({
-                Name = "🔄 Auto Rooms gestartet!",
-                Content = "Das Skript öffnet jetzt automatisch Türen.",
-                Image = "rbxassetid://4483345998"
-            })
-            -- Auto Rooms Logik starten
-            spawn(function()
-                while getgenv().AutoFarmRooms do
-                    wait(0.5)
-                    -- Suche nach der nächsten Tür
-                    local door = game.Workspace:FindFirstChild("Door", true)
-                    if door and door:FindFirstChild("Door") then
-                        door.Door:FireServer("Open")
-                        wait(0.3)
-                    end
-                    -- Suche nach Interaktions-Objekten (Schalter, Knöpfe)
-                    for _, v in pairs(game.Workspace:GetDescendants()) do
-                        if v.Name == "Button" or v.Name == "Switch" or v.Name == "Lever" then
-                            if v:IsA("ClickDetector") or v:IsA("ProximityPrompt") then
-                                v:FireServer()
-                                wait(0.2)
-                            end
-                        end
-                    end
-                end
-            end)
+-- ==========================================
+-- 4. FUNKTION: TOGGLE BUTTON ERSTELLEN
+-- ==========================================
+local function createToggle(text, color, getVal, setVal)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 35)
+    btn.BackgroundColor3 = color or Color3.fromRGB(60, 60, 80)
+    btn.Text = text .. " ❌"
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextScaled = true
+    btn.Font = Enum.Font.SourceSans
+    btn.Parent = scrollFrame
+    
+    btn.MouseButton1Click:Connect(function()
+        local newVal = not getVal()
+        setVal(newVal)
+        if newVal then
+            btn.Text = text .. " ✅"
+            btn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
         else
-            FarmTab:AddNotification({
-                Name = "⏹️ Auto Rooms gestoppt!",
-                Content = "Das Skript öffnet keine Türen mehr.",
-                Image = "rbxassetid://4483345998"
-            })
+            btn.Text = text .. " ❌"
+            btn.BackgroundColor3 = color or Color3.fromRGB(60, 60, 80)
         end
-    end
-})
-
--- Auto Open Doors (Normale Türen)
-FarmTab:AddToggle({
-    Name = "🔑 Auto Open Doors",
-    Default = false,
-    Callback = function(Value)
-        getgenv().AutoOpenDoors = Value
-        if Value then
-            spawn(function()
-                while getgenv().AutoOpenDoors do
-                    wait(0.1)
-                    -- Alle Türen finden und öffnen
-                    for _, v in pairs(game.Workspace:GetDescendants()) do
-                        if v.Name == "Door" and v:IsA("Model") then
-                            if v:FindFirstChild("Handle") and v.Handle:IsA("BasePart") then
-                                -- Versuche die Tür zu öffnen (Remote-Event)
-                                local remote = v:FindFirstChild("Open")
-                                if remote then
-                                    remote:FireServer()
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-    end
-})
-
--- Auto Farm Knobs (Währung)
-FarmTab:AddButton({
-    Name = "💰 Auto Farm Knobs (Start)",
-    Callback = function()
-        OrionLib:MakeNotification({
-            Name = "💰 Knobs Farm gestartet!",
-            Content = "Das Skript sammelt jetzt automatisch Knobs.",
-            Image = "rbxassetid://4483345998",
-            Time = 3
-        })
-        spawn(function()
-            while getgenv().Godmode do -- Läuft solange Godmode aktiv ist
-                wait(0.5)
-                -- Suche nach Knobs (Geld-Items)
-                for _, v in pairs(game.Workspace:GetDescendants()) do
-                    if v.Name == "Knob" and v:IsA("BasePart") and v.Parent ~= char then
-                        -- Teleportiere Spieler zum Knob
-                        local root = char:FindFirstChild("HumanoidRootPart")
-                        if root then
-                            root.CFrame = v.CFrame + Vector3.new(0, 1, 0)
-                            wait(0.1)
-                            -- Simuliere Aufheben
-                            local prompt = v:FindFirstChild("ProximityPrompt")
-                            if prompt then
-                                prompt:FireServer()
-                            end
-                        end
-                    end
-                end
-            end
-        end)
-    end
-})
+    end)
+    return btn
+end
 
 -- ==========================================
--- 6. TAB: SPIELER
+-- 5. BUTTONS ERSTELLEN
 -- ==========================================
-local PlayerTab = Window:MakeTab({
-    Name = "👤 Spieler",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
 
--- Godmode
-PlayerTab:AddToggle({
-    Name = "🛡️ Godmode",
-    Default = false,
-    Callback = function(Value)
-        getgenv().Godmode = Value
-        if Value then
+-- GODMODE
+createToggle("🛡️ Godmode", Color3.fromRGB(80, 60, 120),
+    function() return getgenv().Godmode end,
+    function(v) 
+        getgenv().Godmode = v
+        if v then
             spawn(function()
                 while getgenv().Godmode do
                     wait(0.1)
@@ -196,15 +147,14 @@ PlayerTab:AddToggle({
             end)
         end
     end
-})
+)
 
--- Unendlicher Sprung
-PlayerTab:AddToggle({
-    Name = "🦘 Unendlicher Sprung",
-    Default = false,
-    Callback = function(Value)
-        getgenv().InfiniteJump = Value
-        if Value then
+-- INFINITE JUMP
+createToggle("🦘 Unendlicher Sprung", Color3.fromRGB(60, 120, 80),
+    function() return getgenv().InfiniteJump end,
+    function(v)
+        getgenv().InfiniteJump = v
+        if v then
             userInputService.JumpRequest:Connect(function()
                 if getgenv().InfiniteJump then
                     local char = player.Character
@@ -215,59 +165,22 @@ PlayerTab:AddToggle({
             end)
         end
     end
-})
+)
 
--- Geschwindigkeit
-PlayerTab:AddSlider({
-    Name = "🏃 Geschwindigkeit",
-    Min = 16,
-    Max = 250,
-    Default = 16,
-    Color = Color3.fromRGB(255, 255, 255),
-    Increment = 1,
-    ValueName = "Speed",
-    Callback = function(Value)
-        getgenv().Walkspeed = Value
-        local char = player.Character
-        if char and char:FindFirstChild("Humanoid") then
-            char.Humanoid.WalkSpeed = Value
-        end
-        spawn(function()
-            while getgenv().Walkspeed == Value do
-                wait(0.5)
-                local char = player.Character
-                if char and char:FindFirstChild("Humanoid") then
-                    char.Humanoid.WalkSpeed = getgenv().Walkspeed
-                end
-            end
-        end)
-    end
-})
-
--- ==========================================
--- 7. TAB: BEWEGUNG
--- ==========================================
-local MoveTab = Window:MakeTab({
-    Name = "🌀 Bewegung",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
--- Noclip
-MoveTab:AddToggle({
-    Name = "🌀 Noclip",
-    Default = false,
-    Callback = function(Value)
-        getgenv().Noclip = Value
-        if Value then
+-- NOCLIP
+createToggle("🌀 Noclip", Color3.fromRGB(60, 80, 140),
+    function() return getgenv().Noclip end,
+    function(v)
+        getgenv().Noclip = v
+        if v then
             spawn(function()
                 while getgenv().Noclip do
                     wait(0.1)
                     local char = player.Character
                     if char then
-                        for _, v in pairs(char:GetDescendants()) do
-                            if v:IsA("BasePart") then
-                                v.CanCollide = false
+                        for _, part in pairs(char:GetDescendants()) do
+                            if part:IsA("BasePart") then
+                                part.CanCollide = false
                             end
                         end
                     end
@@ -275,19 +188,18 @@ MoveTab:AddToggle({
             end)
         end
     end
-})
+)
 
--- Flugmodus
-MoveTab:AddToggle({
-    Name = "✈️ Flugmodus (F)",
-    Default = false,
-    Callback = function(Value)
-        getgenv().FlyMode = Value
+-- FLY MODE
+createToggle("✈️ Flugmodus (F)", Color3.fromRGB(80, 120, 180),
+    function() return getgenv().FlyMode end,
+    function(v)
+        getgenv().FlyMode = v
         local char = player.Character
         if char and char:FindFirstChild("Humanoid") then
-            char.Humanoid.PlatformStand = Value
+            char.Humanoid.PlatformStand = v
         end
-        if Value then
+        if v then
             userInputService.InputBegan:Connect(function(input, gameProcessed)
                 if gameProcessed then return end
                 if input.KeyCode == Enum.KeyCode.F then
@@ -300,160 +212,207 @@ MoveTab:AddToggle({
             end)
         end
     end
-})
+)
 
--- ==========================================
--- 8. TAB: SICHTBARKEIT
--- ==========================================
-local VisualTab = Window:MakeTab({
-    Name = "👁️ Sichtbarkeit",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
--- Vollhelligkeit
-VisualTab:AddToggle({
-    Name = "💡 Vollhelligkeit",
-    Default = false,
-    Callback = function(Value)
-        if Value then
-            game:GetService("Lighting").Brightness = 10
-            game:GetService("Lighting").Ambient = Color3.fromRGB(255, 255, 255)
-            game:GetService("Lighting").OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-        else
-            game:GetService("Lighting").Brightness = 2
-            game:GetService("Lighting").Ambient = Color3.fromRGB(0, 0, 0)
-            game:GetService("Lighting").OutdoorAmbient = Color3.fromRGB(0, 0, 0)
-        end
-    end
-})
-
--- Nebel entfernen
-VisualTab:AddToggle({
-    Name = "🌫️ Nebel entfernen",
-    Default = false,
-    Callback = function(Value)
-        if Value then
-            game:GetService("Lighting").FogEnd = 10000
-        else
-            game:GetService("Lighting").FogEnd = 100
-        end
-    end
-})
-
--- ESP (Spieler & Gegner)
-VisualTab:AddToggle({
-    Name = "👾 ESP (Gegner)",
-    Default = false,
-    Callback = function(Value)
-        if Value then
+-- AUTO ROOMS
+createToggle("🚪 Auto Rooms", Color3.fromRGB(180, 120, 60),
+    function() return getgenv().AutoFarmRooms end,
+    function(v)
+        getgenv().AutoFarmRooms = v
+        if v then
             spawn(function()
-                while getgenv().ESP do
-                    wait(0.5)
-                    for _, v in pairs(game.Workspace:GetDescendants()) do
-                        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v ~= char then
-                            if not v:FindFirstChild("ESP_Box") then
-                                local box = Instance.new("BoxHandleAdornment")
-                                box.Name = "ESP_Box"
-                                box.Size = v.PrimaryPart.Size + Vector3.new(1, 1, 1)
-                                box.Adornee = v.PrimaryPart
-                                box.Color3 = Color3.fromRGB(255, 0, 0)
-                                box.Transparency = 0.5
-                                box.AlwaysOnTop = true
-                                box.Parent = v.PrimaryPart
+                while getgenv().AutoFarmRooms do
+                    wait(0.3)
+                    -- Türen öffnen
+                    for _, door in pairs(game.Workspace:GetDescendants()) do
+                        if door.Name == "Door" and door:IsA("Model") then
+                            local handle = door:FindFirstChild("Handle")
+                            if handle and handle:IsA("BasePart") then
+                                local remote = door:FindFirstChild("Open")
+                                if remote then
+                                    remote:FireServer()
+                                end
+                            end
+                        end
+                        if door.Name == "Button" or door.Name == "Switch" then
+                            local prompt = door:FindFirstChild("ProximityPrompt")
+                            if prompt then
+                                prompt:FireServer()
                             end
                         end
                     end
                 end
             end)
+        end
+    end
+)
+
+-- ==========================================
+-- 6. SPEED SLIDER (MANUELL)
+-- ==========================================
+local speedFrame = Instance.new("Frame")
+speedFrame.Size = UDim2.new(1, -10, 0, 50)
+speedFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+speedFrame.BackgroundTransparency = 0.5
+speedFrame.Parent = scrollFrame
+
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(0.7, 0, 0, 25)
+speedLabel.Position = UDim2.new(0, 5, 0, 0)
+speedLabel.Text = "🏃 Speed: 16"
+speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedLabel.TextScaled = true
+speedLabel.Font = Enum.Font.SourceSans
+speedLabel.Parent = speedFrame
+
+local speedBtnUp = Instance.new("TextButton")
+speedBtnUp.Size = UDim2.new(0, 30, 0, 25)
+speedBtnUp.Position = UDim2.new(0.75, 0, 0, 0)
+speedBtnUp.Text = "+"
+speedBtnUp.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedBtnUp.TextScaled = true
+speedBtnUp.Font = Enum.Font.SourceSansBold
+speedBtnUp.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+speedBtnUp.Parent = speedFrame
+
+local speedBtnDown = Instance.new("TextButton")
+speedBtnDown.Size = UDim2.new(0, 30, 0, 25)
+speedBtnDown.Position = UDim2.new(0.88, 0, 0, 0)
+speedBtnDown.Text = "-"
+speedBtnDown.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedBtnDown.TextScaled = true
+speedBtnDown.Font = Enum.Font.SourceSansBold
+speedBtnDown.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
+speedBtnDown.Parent = speedFrame
+
+speedBtnUp.MouseButton1Click:Connect(function()
+    getgenv().Walkspeed = math.min(getgenv().Walkspeed + 5, 250)
+    speedLabel.Text = "🏃 Speed: " .. getgenv().Walkspeed
+    local char = player.Character
+    if char and char:FindFirstChild("Humanoid") then
+        char.Humanoid.WalkSpeed = getgenv().Walkspeed
+    end
+end)
+
+speedBtnDown.MouseButton1Click:Connect(function()
+    getgenv().Walkspeed = math.max(getgenv().Walkspeed - 5, 16)
+    speedLabel.Text = "🏃 Speed: " .. getgenv().Walkspeed
+    local char = player.Character
+    if char and char:FindFirstChild("Humanoid") then
+        char.Humanoid.WalkSpeed = getgenv().Walkspeed
+    end
+end)
+
+-- ==========================================
+-- 7. WEITERE BUTTONS
+-- ==========================================
+
+-- VOLLHELLIGKEIT
+createToggle("💡 Vollhelligkeit", Color3.fromRGB(80, 80, 60),
+    function() return getgenv().FullBright end,
+    function(v)
+        getgenv().FullBright = v
+        if v then
+            lighting.Brightness = 10
+            lighting.Ambient = Color3.fromRGB(255, 255, 255)
+            lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
         else
-            for _, v in pairs(game.Workspace:GetDescendants()) do
-                if v.Name == "ESP_Box" then
-                    v:Destroy()
-                end
+            lighting.Brightness = 2
+            lighting.Ambient = Color3.fromRGB(0, 0, 0)
+            lighting.OutdoorAmbient = Color3.fromRGB(0, 0, 0)
+        end
+    end
+)
+
+-- NEBEL ENTFERNEN
+createToggle("🌫️ Nebel entfernen", Color3.fromRGB(60, 80, 80),
+    function() return getgenv().NoFog end,
+    function(v)
+        getgenv().NoFog = v
+        if v then
+            lighting.FogEnd = 10000
+        else
+            lighting.FogEnd = 100
+        end
+    end
+)
+
+-- MAUS ANZEIGEN
+createButton("🖱️ Maus anzeigen", Color3.fromRGB(80, 80, 120), function()
+    userInputService.MouseIconEnabled = true
+end)
+
+-- WIEDERBELEBEN
+createButton("💀 Wiederbeleben", Color3.fromRGB(120, 60, 60), function()
+    local char = player.Character
+    if char and char:FindFirstChild("Humanoid") then
+        char.Humanoid.Health = 100
+        char.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+    end
+end)
+
+-- TELEPORT ZU TÜR
+createButton("🚪 Zu Tür teleport", Color3.fromRGB(60, 80, 120), function()
+    local char = player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    for _, door in pairs(game.Workspace:GetDescendants()) do
+        if door.Name == "Door" and door:IsA("Model") then
+            local handle = door:FindFirstChild("Handle")
+            if handle and handle:IsA("BasePart") then
+                root.CFrame = handle.CFrame + Vector3.new(0, 2, 3)
+                break
             end
         end
     end
-})
+end)
+
+-- CANVAS GRÖSSE AKTUALISIEREN
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, uiList.AbsoluteContentSize.Y + 20)
+uiList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, uiList.AbsoluteContentSize.Y + 20)
+end)
 
 -- ==========================================
--- 9. TAB: EXTRAS
+-- 8. CLOSE BUTTON
 -- ==========================================
-local ExtraTab = Window:MakeTab({
-    Name = "🔧 Extras",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
+closeBtn.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
 
--- Maus anzeigen
-ExtraTab:AddButton({
-    Name = "🖱️ Maus anzeigen",
-    Callback = function()
-        userInputService.MouseIconEnabled = true
-        OrionLib:MakeNotification({
-            Name = "✅ Maus sichtbar",
-            Content = "Deine Maus sollte jetzt wieder da sein!",
-            Image = "rbxassetid://4483345998",
-            Time = 3
-        })
+-- ==========================================
+-- 9. DRAG & DROP (Verschieben)
+-- ==========================================
+local dragging = false
+local dragStartX, dragStartY
+local framePosX, framePosY
+
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStartX = input.Position.X
+        dragStartY = input.Position.Y
+        framePosX = mainFrame.Position.X.Offset
+        framePosY = mainFrame.Position.Y.Offset
     end
-})
+end)
 
--- Wiederbeleben
-ExtraTab:AddButton({
-    Name = "💀 Wiederbeleben",
-    Callback = function()
-        local char = player.Character
-        if char and char:FindFirstChild("Humanoid") then
-            char.Humanoid.Health = 100
-            char.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-            OrionLib:MakeNotification({
-                Name = "💚 Wiederbelebt!",
-                Content = "Du lebst wieder!",
-                Image = "rbxassetid://4483345998",
-                Time = 2
-            })
-        end
+mainFrame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
     end
-})
+end)
 
--- Teleport zu nächstem Raum
-ExtraTab:AddButton({
-    Name = "🚪 Teleport zu nächstem Raum",
-    Callback = function()
-        local foundDoor = false
-        for _, v in pairs(game.Workspace:GetDescendants()) do
-            if v.Name == "Door" and v:IsA("Model") then
-                if v:FindFirstChild("Handle") and v.Handle:IsA("BasePart") then
-                    local root = char:FindFirstChild("HumanoidRootPart")
-                    if root then
-                        root.CFrame = v.Handle.CFrame + Vector3.new(0, 2, 3)
-                        foundDoor = true
-                        break
-                    end
-                end
-            end
-        end
-        if not foundDoor then
-            OrionLib:MakeNotification({
-                Name = "❌ Keine Tür gefunden!",
-                Content = "Konnte keine Tür finden.",
-                Image = "rbxassetid://4483345998",
-                Time = 2
-            })
-        end
+userInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local deltaX = input.Position.X - dragStartX
+        local deltaY = input.Position.Y - dragStartY
+        mainFrame.Position = UDim2.new(0, framePosX + deltaX, 0, framePosY + deltaY)
     end
-})
+end)
 
 -- ==========================================
--- 10. START-NOTIFICATION
+-- 10. START-MELDUNG
 -- ==========================================
-OrionLib:MakeNotification({
-    Name = "✅ Skript geladen!",
-    Content = "Drücke ] (rechte Klammer) für das Menü!",
-    Image = "rbxassetid://4483345998",
-    Time = 5
-})
-
 print("✅ Doors Auto-Farm Script geladen!")
-print("📌 Drücke ] für das GUI")
+print("📌 GUI ist jetzt sichtbar!")
