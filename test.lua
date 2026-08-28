@@ -1,12 +1,14 @@
 -- =============================================================
--- ||   DOORS AUTO-PLAY SCRIPT (KORRIGIERT)                   ||
--- ||   ALLE FEHLER BEHOBEN - AUGUST 2026                     ||
+-- ||   DOORS AUTO-PLAY SCRIPT (SELBST-LERNEND)              ||
+-- ||   ANALYSIERT DAS SPIEL UND FINDET ALLE OBJEKTE         ||
+-- ||   KEINE FESTEN NAMEN MEHR - ALLES DYNAMISCH            ||
 -- =============================================================
 
-print("🚀 Lade DOORS Auto-Play Script (korrigiert)...")
+print("🚀 Lade Selbst-lernendes DOORS Auto-Play Script...")
+print("⏳ Analysiere Spiel-Struktur...")
 
 -- =============================================================
--- I. SERVICES & GLOBALE VARIABLEN
+-- I. SERVICES
 -- =============================================================
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -17,28 +19,284 @@ local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
- 
--- =============================================================
--- II. SPIEL-OBJEKTE (MIT FEHLERBEHANDLUNG)
--- =============================================================
-local GameData = ReplicatedStorage:FindFirstChild("GameData")
-local LatestRoom = GameData and GameData:FindFirstChild("LatestRoom")
-local CurrentRooms = Workspace:FindFirstChild("CurrentRooms")
 
-if not LatestRoom or not CurrentRooms then
-    print("❌ Kritische Spiel-Objekte nicht gefunden!")
-    print("   LatestRoom:", LatestRoom)
-    print("   CurrentRooms:", CurrentRooms)
-    return
+-- =============================================================
+-- II. SPIEL-ANALYSE (SELBST-LERNEND)
+-- =============================================================
+
+-- 1. FINDET DEN AKTUELLEN RAUM
+local function findLatestRoom()
+    -- Suche in ReplicatedStorage nach GameData
+    local gameData = ReplicatedStorage:FindFirstChild("GameData")
+    if gameData then
+        local latest = gameData:FindFirstChild("LatestRoom")
+        if latest then
+            return latest
+        end
+    end
+    
+    -- Alternative: Suche in Workspace
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name == "LatestRoom" and obj:IsA("NumberValue") then
+            return obj
+        end
+        if obj.Name == "LatestRoom" and obj:IsA("BindableValue") then
+            return obj
+        end
+    end
+    
+    return nil
 end
 
-print("✅ Spiel-Objekte gefunden!")
-print("   LatestRoom:", LatestRoom.Value)
-print("   CurrentRooms:", CurrentRooms)
+-- 2. FINDET DEN CURRENTROOMS-CONTAINER
+local function findCurrentRooms()
+    -- Suche in Workspace
+    local currentRooms = Workspace:FindFirstChild("CurrentRooms")
+    if currentRooms then
+        return currentRooms
+    end
+    
+    -- Alternative: Suche nach Räumen
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj.Name:match("Room%d+") then
+            -- Wir haben einen Raum gefunden, also ist Workspace selbst der Container
+            return Workspace
+        end
+    end
+    
+    return nil
+end
+
+-- 3. FINDET DIE TÜR IN EINEM RAUM
+local function findDoorInRoom(room)
+    if not room then return nil end
+    
+    -- Suche nach typischen Tür-Namen
+    local doorNames = {"Door", "DoorModel", "DoorPart", "DoorHandle", "ExitDoor", "RoomDoor"}
+    for _, name in pairs(doorNames) do
+        local door = room:FindFirstChild(name)
+        if door then
+            return door
+        end
+    end
+    
+    -- Suche in Descendants
+    for _, obj in pairs(room:GetDescendants()) do
+        if obj:IsA("Model") or obj:IsA("BasePart") then
+            for _, name in pairs(doorNames) do
+                if obj.Name == name then
+                    return obj
+                end
+            end
+            -- Prüfe auf Attribute
+            if obj:FindFirstChild("Open") or obj:FindFirstChild("ProximityPrompt") then
+                return obj
+            end
+        end
+    end
+    
+    return nil
+end
+
+-- 4. FINDET SCHLÜSSEL IN EINEM RAUM
+local function findKeysInRoom(room)
+    local keys = {}
+    if not room then return keys end
+    
+    local keyNames = {"KeyObtain", "Key", "KeyPart", "KeyModel", "KeyPickup"}
+    for _, obj in pairs(room:GetDescendants()) do
+        for _, name in pairs(keyNames) do
+            if obj.Name == name then
+                table.insert(keys, obj)
+            end
+        end
+    end
+    
+    return keys
+end
+
+-- 5. FINDET KNOBS (GELD) IN EINEM RAUM
+local function findKnobsInRoom(room)
+    local knobs = {}
+    if not room then return knobs end
+    
+    local knobNames = {"Knob", "KnobPart", "KnobModel", "Money", "Coin"}
+    for _, obj in pairs(room:GetDescendants()) do
+        for _, name in pairs(knobNames) do
+            if obj.Name == name then
+                table.insert(knobs, obj)
+            end
+        end
+    end
+    
+    return knobs
+end
+
+-- 6. FINDET INTERAKTIONS-METHODE
+local function findInteractionMethod(obj)
+    -- Prüfe auf RemoteEvent "Open"
+    local openEvent = obj:FindFirstChild("Open")
+    if openEvent and openEvent:IsA("RemoteEvent") then
+        return "RemoteEvent", openEvent
+    end
+    
+    -- Prüfe auf RemoteEvent "DoorOpen"
+    local doorOpen = obj:FindFirstChild("DoorOpen")
+    if doorOpen and doorOpen:IsA("RemoteEvent") then
+        return "RemoteEvent", doorOpen
+    end
+    
+    -- Prüfe auf ProximityPrompt
+    local prompt = obj:FindFirstChild("ProximityPrompt")
+    if prompt then
+        return "ProximityPrompt", prompt
+    end
+    
+    -- Prüfe auf Handle mit ProximityPrompt
+    local handle = obj:FindFirstChild("Handle")
+    if handle then
+        prompt = handle:FindFirstChild("ProximityPrompt")
+        if prompt then
+            return "ProximityPrompt", prompt
+        end
+    end
+    
+    return nil, nil
+end
+
+-- 7. FINDET TÜR-STATUS
+local function getDoorStatus(door)
+    if not door then return "unknown" end
+    
+    -- Prüfe Attribute
+    local opened = door:GetAttribute("Opened")
+    if opened ~= nil then
+        return opened and "open" or "closed"
+    end
+    
+    local isOpen = door:GetAttribute("IsOpen")
+    if isOpen ~= nil then
+        return isOpen and "open" or "closed"
+    end
+    
+    -- Prüfe ob offen (Position / State)
+    local handle = door:FindFirstChild("Handle")
+    if handle then
+        -- Prüfe ob die Tür rotiert ist (offen)
+        if handle.Rotation.Y > 45 and handle.Rotation.Y < 135 then
+            return "open"
+        end
+    end
+    
+    return "unknown"
+end
 
 -- =============================================================
--- III. STATUS-VARIABLEN
+-- III. GEFUNDENE OBJEKTE SPEICHERN
 -- =============================================================
+local Found = {
+    LatestRoom = nil,
+    CurrentRooms = nil,
+    DoorNames = {},
+    KeyNames = {},
+    KnobNames = {},
+    InteractionType = nil,
+    InteractionObject = nil,
+}
+
+-- ANALYSE DURCHFÜHREN
+local function analyzeGame()
+    print("🔍 Analysiere Spiel...")
+    
+    -- LatestRoom finden
+    Found.LatestRoom = findLatestRoom()
+    if Found.LatestRoom then
+        print("   ✅ LatestRoom gefunden:", Found.LatestRoom.Name)
+    else
+        print("   ⚠️ LatestRoom nicht gefunden! Versuche Alternative...")
+        -- Alternative: Suche nach Raum-Nummer in Workspace
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            if obj:IsA("NumberValue") and obj.Name:match("Room") then
+                Found.LatestRoom = obj
+                print("   ✅ Alternativen LatestRoom gefunden:", obj.Name)
+                break
+            end
+        end
+    end
+    
+    -- CurrentRooms finden
+    Found.CurrentRooms = findCurrentRooms()
+    if Found.CurrentRooms then
+        print("   ✅ CurrentRooms gefunden:", Found.CurrentRooms.Name)
+    else
+        print("   ⚠️ CurrentRooms nicht gefunden!")
+    end
+    
+    -- Einen Test-Raum analysieren
+    local testRoom = nil
+    if Found.CurrentRooms then
+        for _, child in pairs(Found.CurrentRooms:GetChildren()) do
+            if child:IsA("Model") and child.Name:match("Room") then
+                testRoom = child
+                break
+            end
+        end
+    end
+    
+    if testRoom then
+        print("   🔍 Analysiere Test-Raum:", testRoom.Name)
+        
+        -- Tür finden
+        local door = findDoorInRoom(testRoom)
+        if door then
+            print("   ✅ Tür gefunden:", door.Name)
+            Found.DoorNames = {door.Name}
+            
+            -- Interaktionsmethode finden
+            local method, obj = findInteractionMethod(door)
+            if method then
+                Found.InteractionType = method
+                Found.InteractionObject = obj
+                print("   ✅ Interaktionsmethode:", method, "(" .. obj.Name .. ")")
+            else
+                print("   ⚠️ Keine Interaktionsmethode gefunden!")
+            end
+        else
+            print("   ⚠️ Keine Tür im Test-Raum gefunden!")
+        end
+        
+        -- Schlüssel finden
+        local keys = findKeysInRoom(testRoom)
+        if #keys > 0 then
+            print("   ✅ Schlüssel gefunden:", #keys)
+            for _, key in pairs(keys) do
+                table.insert(Found.KeyNames, key.Name)
+            end
+        end
+        
+        -- Knobs finden
+        local knobs = findKnobsInRoom(testRoom)
+        if #knobs > 0 then
+            print("   ✅ Knobs gefunden:", #knobs)
+            for _, knob in pairs(knobs) do
+                table.insert(Found.KnobNames, knob.Name)
+            end
+        end
+    else
+        print("   ⚠️ Kein Test-Raum gefunden!")
+    end
+    
+    print("✅ Analyse abgeschlossen!")
+end
+
+-- =============================================================
+-- IV. AUTO-PLAY LOGIK (DYNAMISCH)
+-- =============================================================
+
+local visitedRooms = {}
+local isProcessing = false
+
+-- STATUS-VARIABLEN
 getgenv().AutoPlay = false
 getgenv().AutoCollect = false
 getgenv().AutoOpenDoors = false
@@ -46,21 +304,12 @@ getgenv().Godmode = false
 getgenv().Noclip = false
 getgenv().AutoHeal = false
 getgenv().Walkspeed = 20
-getgenv().FullBright = false
-getgenv().NoFog = false
 
-local visitedRooms = {}
-local isProcessing = false
-
--- =============================================================
--- IV. CHARAKTER-FUNKTIONEN (MIT FEHLERBEHANDLUNG)
--- =============================================================
+-- CHARAKTER-FUNKTIONEN
 local function getCharacter()
     local c = player.Character
     if not c then
-        pcall(function()
-            player:LoadCharacter()
-        end)
+        pcall(function() player:LoadCharacter() end)
         task.wait(1)
         c = player.Character
     end
@@ -85,9 +334,7 @@ local function getCharacterSafe()
     return c, h, r
 end
 
--- =============================================================
--- V. TELEPORT
--- =============================================================
+-- TELEPORT
 local function teleportTo(position)
     if not position then return false end
     local c, h, root = getCharacterSafe()
@@ -100,86 +347,80 @@ local function teleportTo(position)
     return false
 end
 
--- =============================================================
--- VI. INTERAKTION (KORRIGIERT)
--- =============================================================
-
--- Tür öffnen (mit Fehlerbehandlung)
-local function openDoor(door)
-    if not door then 
-        print("   ❌ Keine Tür übergeben!")
-        return false 
+-- INTERAKTION (DYNAMISCH)
+local function interactWithObject(obj)
+    if not obj then return false end
+    
+    -- Methode 1: RemoteEvent
+    local method, event = findInteractionMethod(obj)
+    if method == "RemoteEvent" and event then
+        pcall(function()
+            event:FireServer()
+        end)
+        return true
     end
     
-    -- Prüfen, ob Tür schon offen ist
-    local isOpen = false
-    pcall(function()
-        isOpen = door:GetAttribute("Opened") == true
-    end)
-    if isOpen then
+    -- Methode 2: ProximityPrompt
+    if method == "ProximityPrompt" and event then
+        pcall(function()
+            -- "E" halten simulieren
+            local start = tick()
+            repeat
+                event:FireServer()
+                task.wait(0.05)
+            until tick() - start > 1.5
+            event:FireServer()
+        end)
+        return true
+    end
+    
+    return false
+end
+
+-- TÜR ÖFFNEN
+local function openDoor(door)
+    if not door then return false end
+    
+    -- Prüfe ob schon offen
+    local status = getDoorStatus(door)
+    if status == "open" then
         print("   🚪 Tür schon offen!")
         return true
     end
     
-    print("   🚪 Öffne Tür...")
+    print("   🚪 Öffne Tür mit:", Found.InteractionType or "unbekannt")
     
-    -- Methode 1: RemoteEvent "Open"
-    local success = false
-    pcall(function()
-        local openEvent = door:FindFirstChild("Open")
-        if openEvent and openEvent:IsA("RemoteEvent") then
-            openEvent:FireServer()
-            print("   📡 RemoteEvent 'Open' gefeuert!")
-            success = true
-        end
-    end)
+    -- Teleport zur Tür
+    local handle = door:FindFirstChild("Handle")
+    if handle then
+        teleportTo(handle.Position + Vector3.new(0, 0, 4))
+        task.wait(0.3)
+    end
     
-    -- Methode 2: ProximityPrompt mit "E" halten
-    pcall(function()
-        local handle = door:FindFirstChild("Handle")
-        if handle then
-            teleportTo(handle.Position + Vector3.new(0, 0, 4))
-            task.wait(0.3)
-            
-            local prompt = handle:FindFirstChild("ProximityPrompt")
-            if prompt then
-                print("   🔑 Halte E für 1.5s...")
-                local start = tick()
-                repeat
-                    prompt:FireServer()
-                    task.wait(0.05)
-                until tick() - start > 1.5
-                prompt:FireServer()
-                success = true
+    -- Interagiere
+    local success = interactWithObject(door)
+    
+    if success then
+        print("   ⏳ Warte auf Tür...")
+        local timeout = 15
+        local start = tick()
+        repeat
+            task.wait(0.2)
+            status = getDoorStatus(door)
+            if status == "open" then
+                print("   ✅ Tür geöffnet! (nach " .. math.floor(tick() - start) .. "s)")
+                return true
             end
-        end
-    end)
-    
-    -- Warten auf Tür-Öffnung
-    print("   ⏳ Warte auf Tür...")
-    local timeout = 15
-    local start = tick()
-    repeat
-        task.wait(0.2)
-        local opened = false
-        pcall(function()
-            opened = door:GetAttribute("Opened") == true
-        end)
-        if opened then
-            print("   ✅ Tür geöffnet! (nach " .. math.floor(tick() - start) .. "s)")
-            return true
-        end
-    until tick() - start > timeout
+        until tick() - start > timeout
+    end
     
     print("   ⏰ Timeout! Tür öffnet nicht.")
     return false
 end
 
--- Gegenstand aufheben (mit Fehlerbehandlung)
+-- GEGENSTAND AUFHEBEN
 local function collectItem(item)
-    if not item or not item.Parent then 
-        return false 
-    end
+    if not item or not item.Parent then return false end
     
     local pos = nil
     pcall(function()
@@ -197,96 +438,14 @@ local function collectItem(item)
         task.wait(0.2)
     end
     
-    local success = false
-    pcall(function()
-        local prompt = item:FindFirstChild("ProximityPrompt")
-        if prompt then
-            prompt:FireServer()
-            task.wait(0.2)
-            prompt:FireServer()
-            success = true
-        else
-            -- Alternativ: Collect-Event
-            local collect = item:FindFirstChild("Collect")
-            if collect then
-                collect:FireServer()
-                success = true
-            end
-        end
-    end)
-    
-    return success
+    return interactWithObject(item)
 end
 
--- =============================================================
--- VII. RAUM-FUNKTIONEN (MIT FEHLERBEHANDLUNG)
--- =============================================================
-local function getCurrentRoom()
-    if not LatestRoom then return nil end
-    return LatestRoom.Value
-end
-
-local function getRoomContainer(roomNum)
-    if not roomNum or not CurrentRooms then return nil end
-    return CurrentRooms:FindFirstChild(tostring(roomNum))
-end
-
-local function findDoor(room)
-    if not room then return nil end
-    return room:FindFirstChild("Door")
-end
-
-local function isDoorOpen(door)
-    if not door then return false end
-    local opened = false
-    pcall(function()
-        opened = door:GetAttribute("Opened") == true
-        if not opened then
-            opened = door:GetAttribute("IsOpen") == true
-        end
-    end)
-    return opened
-end
-
-local function findKeys(room)
-    local keys = {}
-    if not room then return keys end
-    pcall(function()
-        for _, obj in pairs(room:GetDescendants()) do
-            if obj.Name == "KeyObtain" or obj.Name == "Key" then
-                table.insert(keys, obj)
-            end
-        end
-    end)
-    return keys
-end
-
-local function findKnobs(room)
-    local knobs = {}
-    if not room then return knobs end
-    pcall(function()
-        for _, obj in pairs(room:GetDescendants()) do
-            if obj.Name == "Knob" then
-                table.insert(knobs, obj)
-            end
-        end
-    end)
-    return knobs
-end
-
--- =============================================================
--- VIII. RAUM VERARBEITEN (KORRIGIERT)
--- =============================================================
+-- RAUM VERARBEITEN
 local function processRoom(roomNum)
-    if isProcessing then 
-        return 
-    end
-    if visitedRooms[roomNum] then 
-        return 
-    end
-    if not roomNum then 
-        return 
-    end
+    if isProcessing then return end
+    if visitedRooms[roomNum] then return end
+    if not roomNum then return end
     
     isProcessing = true
     print("\n" .. string.rep("=", 50))
@@ -340,10 +499,17 @@ local function processRoom(roomNum)
         h.WalkSpeed = getgenv().Walkspeed
     end)
     
-    -- Raum-Container holen
-    local room = getRoomContainer(roomNum)
+    -- Raum holen
+    local room = nil
+    if Found.CurrentRooms then
+        room = Found.CurrentRooms:FindFirstChild(tostring(roomNum))
+        if not room then
+            -- Versuche mit "Room" + Nummer
+            room = Found.CurrentRooms:FindFirstChild("Room" .. roomNum)
+        end
+    end
     if not room then
-        print("   ❌ Raum-Container nicht gefunden!")
+        print("   ❌ Raum nicht gefunden!")
         visitedRooms[roomNum] = true
         isProcessing = false
         return
@@ -353,7 +519,7 @@ local function processRoom(roomNum)
     if getgenv().AutoCollect then
         print("🔑 Sammle Items...")
         
-        local keys = findKeys(room)
+        local keys = findKeysInRoom(room)
         for _, key in pairs(keys) do
             if collectItem(key) then
                 print("   ✅ Key eingesammelt!")
@@ -361,7 +527,7 @@ local function processRoom(roomNum)
             end
         end
         
-        local knobs = findKnobs(room)
+        local knobs = findKnobsInRoom(room)
         for _, knob in pairs(knobs) do
             if collectItem(knob) then
                 print("   ✅ Knob eingesammelt!")
@@ -372,7 +538,7 @@ local function processRoom(roomNum)
     
     -- 2. AUTO-OPEN-DOORS
     if getgenv().AutoOpenDoors then
-        local door = findDoor(room)
+        local door = findDoorInRoom(room)
         if door then
             local opened = openDoor(door)
             
@@ -386,23 +552,8 @@ local function processRoom(roomNum)
                     visitedRooms[roomNum] = true
                     print("   ✅ Raum " .. roomNum .. " abgeschlossen!")
                 else
-                    -- Fallback
-                    local doorPos = nil
-                    pcall(function()
-                        if door:IsA("BasePart") then
-                            doorPos = door.Position
-                        elseif door.PrimaryPart then
-                            doorPos = door.PrimaryPart.Position
-                        end
-                    end)
-                    if doorPos then
-                        teleportTo(doorPos + Vector3.new(0, 0, 6))
-                        visitedRooms[roomNum] = true
-                        print("   ✅ Raum " .. roomNum .. " abgeschlossen!")
-                    else
-                        visitedRooms[roomNum] = true
-                        print("   ⚠️ Raum " .. roomNum .. " markiert (keine Tür-Position)")
-                    end
+                    visitedRooms[roomNum] = true
+                    print("   ⚠️ Raum " .. roomNum .. " markiert (kein Handle)")
                 end
             else
                 print("   ❌ Tür konnte nicht geöffnet werden!")
@@ -421,69 +572,90 @@ local function processRoom(roomNum)
 end
 
 -- =============================================================
--- IX. RAUM-LISTENER (KORRIGIERT)
+-- V. RAUM-LISTENER
 -- =============================================================
 local function startAutoPlay()
-    if not getgenv().AutoPlay then 
-        return 
+    if not getgenv().AutoPlay then return end
+    print("🔄 Auto-Play gestartet!")
+    
+    if not Found.LatestRoom then
+        print("❌ LatestRoom nicht gefunden! Führe Analyse durch...")
+        analyzeGame()
+        if not Found.LatestRoom then
+            print("❌ Kann nicht starten - kein LatestRoom!")
+            return
+        end
     end
-    print("🔄 Auto-Play gestartet! (korrigiert)")
-    print("📌 Warte auf Raumwechsel...")
     
     -- Raumwechsel-Listener
     local connection = nil
-    connection = LatestRoom.Changed:Connect(function()
-        if not getgenv().AutoPlay then 
-            if connection then 
-                connection:Disconnect() 
-            end
-            return 
+    connection = Found.LatestRoom.Changed:Connect(function()
+        if not getgenv().AutoPlay then
+            if connection then connection:Disconnect() end
+            return
         end
         
-        local roomNum = getCurrentRoom()
-        if not roomNum then 
-            return 
-        end
+        local roomNum = Found.LatestRoom.Value
+        if not roomNum then return end
         
         if not visitedRooms[roomNum] and not isProcessing then
             processRoom(roomNum)
         end
     end)
     
-    -- Aktuellen Raum sofort verarbeiten
+    -- Aktuellen Raum verarbeiten
     task.wait(1)
-    local roomNum = getCurrentRoom()
+    local roomNum = Found.LatestRoom.Value
     if roomNum and not visitedRooms[roomNum] then
         processRoom(roomNum)
     end
 end
 
 -- =============================================================
--- X. GUI (KORRIGIERT - ZEILE 397)
+-- VI. ANALYSE STARTEN
+-- =============================================================
+analyzeGame()
+
+print("")
+print("📊 ANALYSE-ERGEBNISSE:")
+print("   LatestRoom:", Found.LatestRoom and Found.LatestRoom.Name or "❌")
+print("   CurrentRooms:", Found.CurrentRooms and Found.CurrentRooms.Name or "❌")
+print("   Interaktionsmethode:", Found.InteractionType or "❌")
+print("   Gefundene Tür-Namen:", #Found.DoorNames > 0 and table.concat(Found.DoorNames, ", ") or "❌")
+print("   Gefundene Schlüssel-Namen:", #Found.KeyNames > 0 and table.concat(Found.KeyNames, ", ") or "❌")
+print("   Gefundene Knob-Namen:", #Found.KnobNames > 0 and table.concat(Found.KnobNames, ", ") or "❌")
+print("")
+
+if not Found.LatestRoom or not Found.CurrentRooms then
+    print("⚠️ WARNUNG: Nicht alle Objekte gefunden!")
+    print("   Das Skript kann trotzdem versuchen zu laufen.")
+    print("   Falls es nicht funktioniert, starte das Spiel neu.")
+end
+
+-- =============================================================
+-- VII. GUI (EINFACH)
 -- =============================================================
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "DoorsAutoPlay"
+screenGui.Name = "DoorsAutoPlaySelf"
 screenGui.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 300, 0, 450)
+mainFrame.Size = UDim2.new(0, 280, 0, 420)
 mainFrame.Position = UDim2.new(0, 10, 0, 50)
 mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 30)
 mainFrame.BackgroundTransparency = 0.1
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
 
--- Titel
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 40)
 title.BackgroundColor3 = Color3.fromRGB(35, 35, 60)
-title.Text = "🚪 DOORS AUTO-PLAY"
+title.Text = "🚪 AUTO-PLAY (SELBST)"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextScaled = true
 title.Font = Enum.Font.SourceSansBold
 title.Parent = mainFrame
 
--- Close
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 30, 0, 30)
 closeBtn.Position = UDim2.new(1, -35, 0, 2)
@@ -494,7 +666,6 @@ closeBtn.TextScaled = true
 closeBtn.Font = Enum.Font.SourceSansBold
 closeBtn.Parent = mainFrame
 
--- Scroll
 local scroll = Instance.new("ScrollingFrame")
 scroll.Size = UDim2.new(1, -10, 1, -50)
 scroll.Position = UDim2.new(0, 5, 0, 45)
@@ -508,9 +679,7 @@ list.Padding = UDim.new(0, 4)
 list.SortOrder = Enum.SortOrder.LayoutOrder
 list.Parent = scroll
 
--- =============================================================
 -- GUI HELFER
--- =============================================================
 local function createToggle(text, color, getVal, setVal)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -10, 0, 32)
@@ -546,9 +715,7 @@ local function createButton(text, color, callback)
     return btn
 end
 
--- =============================================================
 -- TOGGLES
--- =============================================================
 createToggle("▶️ Auto-Play", Color3.fromRGB(200, 100, 50),
     function() return getgenv().AutoPlay end,
     function(v) getgenv().AutoPlay = v end
@@ -601,9 +768,7 @@ createToggle("🌀 Noclip", Color3.fromRGB(50, 70, 150),
     end
 )
 
--- =============================================================
 -- SPEED
--- =============================================================
 local speedFrame = Instance.new("Frame")
 speedFrame.Size = UDim2.new(1, -10, 0, 40)
 speedFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
@@ -642,7 +807,7 @@ spUp.MouseButton1Click:Connect(function()
     getgenv().Walkspeed = math.min(getgenv().Walkspeed + 5, 250)
     speedLabel.Text = "🏃 Speed: " .. getgenv().Walkspeed
     local _, h = getCharacterSafe()
-    if h then 
+    if h then
         pcall(function() h.WalkSpeed = getgenv().Walkspeed end)
     end
 end)
@@ -651,14 +816,12 @@ spDown.MouseButton1Click:Connect(function()
     getgenv().Walkspeed = math.max(getgenv().Walkspeed - 5, 16)
     speedLabel.Text = "🏃 Speed: " .. getgenv().Walkspeed
     local _, h = getCharacterSafe()
-    if h then 
+    if h then
         pcall(function() h.WalkSpeed = getgenv().Walkspeed end)
     end
 end)
 
--- =============================================================
 -- VISUAL
--- =============================================================
 createToggle("💡 Vollhelligkeit", Color3.fromRGB(80, 80, 50),
     function() return getgenv().FullBright end,
     function(v)
@@ -687,9 +850,7 @@ createToggle("🌫️ Nebel entfernen", Color3.fromRGB(50, 70, 70),
     end
 )
 
--- =============================================================
 -- BUTTONS
--- =============================================================
 createButton("🖱️ Maus anzeigen", Color3.fromRGB(70, 70, 110), function()
     pcall(function()
         UserInputService.MouseIconEnabled = true
@@ -719,8 +880,13 @@ createButton("📊 Fortschritt", Color3.fromRGB(130, 130, 50), function()
         print("   Letzter Raum:", sorted[#sorted])
         print("   Nächster Raum:", sorted[#sorted] + 1)
     end
-    local current = getCurrentRoom()
-    print("   Aktueller Raum:", current or "Unbekannt")
+    if Found.LatestRoom then
+        print("   Aktueller Raum:", Found.LatestRoom.Value or "Unbekannt")
+    end
+end)
+
+createButton("🔍 Neu analysieren", Color3.fromRGB(50, 130, 130), function()
+    analyzeGame()
 end)
 
 createButton("🔄 Zurücksetzen", Color3.fromRGB(130, 50, 50), function()
@@ -741,9 +907,7 @@ closeBtn.MouseButton1Click:Connect(function()
     getgenv().AutoPlay = false
 end)
 
--- =============================================================
 -- DRAG & DROP
--- =============================================================
 local drag = false
 local dx, dy, fx, fy
 
@@ -768,15 +932,15 @@ UserInputService.InputChanged:Connect(function(inp)
 end)
 
 -- =============================================================
--- START
+-- VIII. START
 -- =============================================================
 print("")
 print("============================================================")
-print("🚪 DOORS AUTO-PLAY SCRIPT GELADEN! (KORRIGIERT)")
+print("🚪 DOORS AUTO-PLAY SCRIPT (SELBST-LERNEND) GELADEN!")
 print("============================================================")
-print("📌 Alle Fehler behoben!")
-print("📌 Basierend auf technischem Report (August 2026)")
-print("📌 Fehlerbehandlung mit pcall() für Stabilität")
+print("📌 Das Skript analysiert das Spiel selbstständig!")
+print("📌 Keine fest codierten Namen mehr!")
+print("📌 Der 'Neu analysieren'-Button aktualisiert die Daten!")
 print("============================================================")
 print("")
 print("📋 ANLEITUNG:")
@@ -784,6 +948,7 @@ print("   1. Aktiviere 'Auto-Play' für Vollautomatik")
 print("   2. Aktiviere 'Auto-Collect' für Schlüssel & Knobs")
 print("   3. Aktiviere 'Auto-Open-Doors' für Türen")
 print("   4. Aktiviere 'Godmode' + 'Noclip' für Sicherheit")
+print("   5. Falls nichts passiert, klicke 'Neu analysieren'")
 print("")
 print("✅ Skript bereit!")
 print("============================================================")
