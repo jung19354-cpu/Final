@@ -18,7 +18,7 @@ local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
-
+ 
 -- =============================================================
 -- 2. SPIEL-OBJEKTE
 -- =============================================================
