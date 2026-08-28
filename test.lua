@@ -1,10 +1,10 @@
 -- =============================================================
--- ||   DOORS TP-TEST - NUR TELEPORT ZU KEY & KNOBS          ||
--- ||   MIT 2 UI-BUTTONS - OFFSET 1 ZUM VERMEIDEN VON BUGS  ||
+-- ||   DOORS - KEY SAMMELN & ZUR TÜR TELEPORT             ||
+-- ||   SEQUENZ: TP zu Key → E drücken → TP zur Tür        ||
 -- =============================================================
 
-print("🚀 Lade DOORS TP-Test-Skript...")
-print("📌 Klicke auf 'TP zu Key' oder 'TP zu Knobs'")
+print("🚀 Lade DOORS Key-Sammler...")
+print("📌 Klicke auf '▶ Start'")
 
 -- =============================================================
 -- 1. SERVICES
@@ -24,13 +24,8 @@ local GameData = ReplicatedStorage:FindFirstChild("GameData")
 local LatestRoom = GameData and GameData:FindFirstChild("LatestRoom")
 local CurrentRooms = Workspace:FindFirstChild("CurrentRooms")
 
-if not LatestRoom then
-    print("❌ LatestRoom nicht gefunden!")
-    return
-end
-
-if not CurrentRooms then
-    print("❌ CurrentRooms nicht gefunden!")
+if not LatestRoom or not CurrentRooms then
+    print("❌ Kritische Objekte nicht gefunden!")
     return
 end
 
@@ -38,7 +33,7 @@ print("✅ LatestRoom: " .. tostring(LatestRoom.Value))
 print("✅ CurrentRooms: " .. tostring(CurrentRooms))
 
 -- =============================================================
--- 3. CHARAKTER-FUNKTION
+-- 3. CHARAKTER
 -- =============================================================
 local function getChar()
     local c = player.Character
@@ -56,9 +51,9 @@ local function getRoot(c)
 end
 
 -- =============================================================
--- 4. TELEPORT-FUNKTION MIT OFFSET
+-- 4. TELEPORT MIT OFFSET 3
 -- =============================================================
-local function teleportTo(pos, offset)
+local function teleportTo(pos)
     if not pos then 
         print("❌ Keine Position!")
         return false 
@@ -71,8 +66,7 @@ local function teleportTo(pos, offset)
         return false
     end
     
-    offset = offset or Vector3.new(0, 1, 0) -- Standard-Offset 1 nach oben
-    local targetPos = pos + offset
+    local targetPos = pos + Vector3.new(0, 3, 0) -- Offset 3 nach oben
     
     pcall(function()
         root.CFrame = CFrame.new(targetPos)
@@ -94,33 +88,85 @@ local function getRoomContainer(num)
 end
 
 -- =============================================================
--- 6. OBJEKTE FINDEN
+-- 6. OBJEKTE FINDEN (MIT SCANNER-ARTIGER SUCHE)
 -- =============================================================
+
+-- Finde ALLE Objekte im Raum (für Debug)
+local function findAllObjects(room)
+    if not room then return {} end
+    local objects = {}
+    for _, obj in pairs(room:GetDescendants()) do
+        if obj.Name and obj.Name ~= "" then
+            objects[obj.Name] = objects[obj.Name] or {}
+            table.insert(objects[obj.Name], obj)
+        end
+    end
+    return objects
+end
 
 -- Key finden: CurrentRooms.X.Assets.KeyObtain
 local function findKey(room)
     if not room then return nil end
+    
+    -- Methode 1: Assets.KeyObtain
     local assets = room:FindFirstChild("Assets")
-    if not assets then return nil end
-    return assets:FindFirstChild("KeyObtain")
+    if assets then
+        local key = assets:FindFirstChild("KeyObtain")
+        if key then return key end
+    end
+    
+    -- Methode 2: Direkt im Raum suchen
+    for _, obj in pairs(room:GetChildren()) do
+        if obj.Name == "KeyObtain" then
+            return obj
+        end
+    end
+    
+    -- Methode 3: In Descendants suchen
+    for _, obj in pairs(room:GetDescendants()) do
+        if obj.Name == "KeyObtain" then
+            return obj
+        end
+        if obj.Name == "Key" and obj:IsA("BasePart") then
+            return obj
+        end
+    end
+    
+    return nil
 end
 
 -- Knobs finden: CurrentRooms.X.Assets.Dresser.DrawerContainer.Knobs
 local function findKnobs(room)
     if not room then return nil end
+    
     local assets = room:FindFirstChild("Assets")
     if not assets then return nil end
+    
     local dresser = assets:FindFirstChild("Dresser")
     if not dresser then return nil end
+    
     local drawerContainer = dresser:FindFirstChild("DrawerContainer")
     if not drawerContainer then return nil end
+    
     return drawerContainer:FindFirstChild("Knobs")
 end
 
--- Door finden: CurrentRooms.X.Door
+-- Tür finden: CurrentRooms.X.Door
 local function findDoor(room)
     if not room then return nil end
-    return room:FindFirstChild("Door")
+    
+    -- Methode 1: Direkt im Raum
+    local door = room:FindFirstChild("Door")
+    if door then return door end
+    
+    -- Methode 2: In Descendants suchen
+    for _, obj in pairs(room:GetDescendants()) do
+        if obj.Name == "Door" then
+            return obj
+        end
+    end
+    
+    return nil
 end
 
 -- =============================================================
@@ -149,15 +195,176 @@ local function getObjectPosition(obj)
 end
 
 -- =============================================================
--- 8. GUI MIT 2 BUTTONS
+-- 8. INTERAKTION - E DRÜCKEN
+-- =============================================================
+local function pressE(target)
+    if not target then 
+        print("❌ Kein Target für E!")
+        return false 
+    end
+    
+    print("🔄 Drücke E auf: " .. target.Name)
+    
+    local success = false
+    
+    -- Methode 1: ProximityPrompt
+    pcall(function()
+        local prompt = target:FindFirstChild("ProximityPrompt")
+        if not prompt then
+            for _, child in pairs(target:GetChildren()) do
+                if child:IsA("ProximityPrompt") then
+                    prompt = child
+                    break
+                end
+            end
+        end
+        if prompt then
+            prompt:FireServer()
+            success = true
+            print("   ✅ ProximityPrompt gefeuert!")
+        end
+    end)
+    
+    -- Methode 2: RemoteEvent
+    if not success then
+        pcall(function()
+            for _, child in pairs(target:GetChildren()) do
+                if child:IsA("RemoteEvent") then
+                    child:FireServer()
+                    success = true
+                    print("   ✅ RemoteEvent (" .. child.Name .. ") gefeuert!")
+                end
+            end
+        end)
+    end
+    
+    -- Methode 3: ClickDetector
+    if not success then
+        pcall(function()
+            local clicker = target:FindFirstChild("ClickDetector")
+            if clicker then
+                clicker:Click()
+                success = true
+                print("   ✅ ClickDetector ausgelöst!")
+            end
+        end)
+    end
+    
+    if not success then
+        print("   ❌ Keine Interaktionsmethode gefunden!")
+    end
+    
+    return success
+end
+
+-- =============================================================
+-- 9. HAUPTLOGIK: KEY → E → TÜR
+-- =============================================================
+local function runSequence()
+    print("\n============================================================")
+    print("▶ SEQUENZ START")
+    print("============================================================")
+    
+    -- Raum holen
+    local roomNum = getRoom()
+    if not roomNum then
+        print("❌ Keine Raum-Nummer!")
+        return
+    end
+    
+    local room = getRoomContainer(roomNum)
+    if not room then
+        print("❌ Raum " .. roomNum .. " nicht gefunden!")
+        return
+    end
+    
+    print("📂 Raum: " .. roomNum)
+    
+    -- ==========================================
+    -- SCHRITT 1: KEY FINDEN & TP
+    -- ==========================================
+    print("\n🔍 SCHRITT 1: Key finden...")
+    local key = findKey(room)
+    
+    if not key then
+        print("❌ KeyObtain nicht gefunden!")
+        print("   Durchsuche Raum nach allen Objekten...")
+        
+        local allObjects = findAllObjects(room)
+        print("   Gefundene Objekte:")
+        for name, objs in pairs(allObjects) do
+            print("      - " .. name .. " (" .. #objs .. "x)")
+        end
+        return
+    end
+    
+    print("✅ Key gefunden: " .. key.Name)
+    
+    local keyPos = getObjectPosition(key)
+    if not keyPos then
+        print("❌ Keine Position für Key!")
+        return
+    end
+    
+    print("📍 Key-Position: " .. tostring(keyPos))
+    print("🔄 Teleportiere zu Key (Offset 3)...")
+    teleportTo(keyPos)
+    task.wait(0.5)
+    
+    -- ==========================================
+    -- SCHRITT 2: E DRÜCKEN (KEY AUFHEBEN)
+    -- ==========================================
+    print("\n🔑 SCHRITT 2: Key aufheben (E drücken)...")
+    local success = pressE(key)
+    
+    if success then
+        print("✅ Key erfolgreich aufgehoben!")
+    else
+        print("⚠️ Key konnte nicht aufgehoben werden!")
+    end
+    
+    task.wait(0.5)
+    
+    -- ==========================================
+    -- SCHRITT 3: TÜR FINDEN & TP
+    -- ==========================================
+    print("\n🚪 SCHRITT 3: Tür finden...")
+    local door = findDoor(room)
+    
+    if not door then
+        print("❌ Door nicht gefunden!")
+        return
+    end
+    
+    print("✅ Door gefunden: " .. door.Name)
+    
+    local doorPos = getObjectPosition(door)
+    if not doorPos then
+        print("❌ Keine Position für Door!")
+        return
+    end
+    
+    print("📍 Door-Position: " .. tostring(doorPos))
+    print("🔄 Teleportiere zu Door (Offset 3)...")
+    teleportTo(doorPos)
+    
+    print("\n============================================================")
+    print("✅ SEQUENZ ABGESCHLOSSEN!")
+    print("============================================================")
+    print("📌 Key wurde aufgehoben und du bist jetzt bei der Tür!")
+    print("============================================================")
+end
+
+-- =============================================================
+-- 10. GUI MIT START-BUTTON
 -- =============================================================
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "DoorsTPTest"
+screenGui.Name = "DoorsKeyCollector"
 screenGui.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 250, 0, 120)
-mainFrame.Position = UDim2.new(0.5, -125, 0.5, -60)
+mainFrame.Size = UDim2.new(0, 220, 0, 80)
+mainFrame.Position = UDim2.new(0.5, -110, 0.5, -40)
 mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 30)
 mainFrame.BackgroundTransparency = 0.1
 mainFrame.BorderSizePixel = 0
@@ -167,7 +374,7 @@ mainFrame.Parent = screenGui
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 30)
 title.BackgroundColor3 = Color3.fromRGB(35, 35, 60)
-title.Text = "📍 TP-TEST"
+title.Text = "🔑 KEY → 🚪 TÜR"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextScaled = true
 title.Font = Enum.Font.SourceSansBold
@@ -188,150 +395,40 @@ closeBtn.MouseButton1Click:Connect(function()
     pcall(function() screenGui:Destroy() end)
 end)
 
--- =============================================================
--- 9. BUTTONS ERSTELLEN
--- =============================================================
-local function createButton(text, color, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.9, 0, 0, 30)
-    btn.Position = UDim2.new(0.05, 0, 0, 0)
-    btn.BackgroundColor3 = color or Color3.fromRGB(45, 45, 70)
-    btn.Text = text
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.TextScaled = true
-    btn.Font = Enum.Font.SourceSansBold
-    btn.Parent = mainFrame
-    btn.MouseButton1Click:Connect(callback)
-    return btn
-end
+-- START-Button
+local startBtn = Instance.new("TextButton")
+startBtn.Size = UDim2.new(0.9, 0, 0, 35)
+startBtn.Position = UDim2.new(0.05, 0, 0.45, 0)
+startBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 40)
+startBtn.Text = "▶ START"
+startBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+startBtn.TextScaled = true
+startBtn.Font = Enum.Font.SourceSansBold
+startBtn.Parent = mainFrame
 
--- Button 1: TP zu Key
-local keyBtn = createButton("🔑 TP zu Key", Color3.fromRGB(60, 120, 60), function()
-    print("\n============================================================")
-    print("🔑 TP zu KEY")
-    print("============================================================")
+startBtn.MouseButton1Click:Connect(function()
+    -- Button deaktivieren (während der Sequenz)
+    startBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    startBtn.Text = "⏳ LÄUFT..."
+    startBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    startBtn.Active = false
     
-    local roomNum = getRoom()
-    if not roomNum then
-        print("❌ Keine Raum-Nummer!")
-        return
+    -- Sequenz ausführen
+    local success, err = pcall(runSequence)
+    if not success then
+        print("❌ FEHLER: " .. tostring(err))
     end
     
-    local room = getRoomContainer(roomNum)
-    if not room then
-        print("❌ Raum " .. roomNum .. " nicht gefunden!")
-        return
-    end
-    
-    local key = findKey(room)
-    if not key then
-        print("❌ KeyObtain nicht gefunden in Raum " .. roomNum)
-        return
-    end
-    
-    print("✅ KeyObtain gefunden: " .. key.Name)
-    
-    local pos = getObjectPosition(key)
-    if not pos then
-        print("❌ Keine Position für KeyObtain!")
-        return
-    end
-    
-    print("📍 Position: " .. tostring(pos))
-    print("🔄 Teleportiere mit Offset 1...")
-    
-    teleportTo(pos, Vector3.new(0, 1, 0))
-    
-    print("============================================================")
+    -- Button reaktivieren
+    task.wait(0.5)
+    startBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 40)
+    startBtn.Text = "▶ START"
+    startBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    startBtn.Active = true
 end)
 
--- Button 2: TP zu Knobs
-local knobsBtn = createButton("💰 TP zu Knobs", Color3.fromRGB(60, 80, 140), function()
-    print("\n============================================================")
-    print("💰 TP zu KNOBS")
-    print("============================================================")
-    
-    local roomNum = getRoom()
-    if not roomNum then
-        print("❌ Keine Raum-Nummer!")
-        return
-    end
-    
-    local room = getRoomContainer(roomNum)
-    if not room then
-        print("❌ Raum " .. roomNum .. " nicht gefunden!")
-        return
-    end
-    
-    local knobs = findKnobs(room)
-    if not knobs then
-        print("❌ Knobs nicht gefunden in Raum " .. roomNum)
-        return
-    end
-    
-    print("✅ Knobs gefunden: " .. knobs.Name)
-    
-    local pos = getObjectPosition(knobs)
-    if not pos then
-        print("❌ Keine Position für Knobs!")
-        return
-    end
-    
-    print("📍 Position: " .. tostring(pos))
-    print("🔄 Teleportiere mit Offset 1...")
-    
-    teleportTo(pos, Vector3.new(0, 1, 0))
-    
-    print("============================================================")
-end)
-
--- Button 3 (optional): TP zu Door
-local doorBtn = createButton("🚪 TP zu Door", Color3.fromRGB(80, 60, 120), function()
-    print("\n============================================================")
-    print("🚪 TP zu DOOR")
-    print("============================================================")
-    
-    local roomNum = getRoom()
-    if not roomNum then
-        print("❌ Keine Raum-Nummer!")
-        return
-    end
-    
-    local room = getRoomContainer(roomNum)
-    if not room then
-        print("❌ Raum " .. roomNum .. " nicht gefunden!")
-        return
-    end
-    
-    local door = findDoor(room)
-    if not door then
-        print("❌ Door nicht gefunden in Raum " .. roomNum)
-        return
-    end
-    
-    print("✅ Door gefunden: " .. door.Name)
-    
-    local pos = getObjectPosition(door)
-    if not pos then
-        print("❌ Keine Position für Door!")
-        return
-    end
-    
-    print("📍 Position: " .. tostring(pos))
-    print("🔄 Teleportiere mit Offset 1...")
-    
-    teleportTo(pos, Vector3.new(0, 1, 0))
-    
-    print("============================================================")
-end)
-
--- Buttons positionieren
-keyBtn.Position = UDim2.new(0.05, 0, 0.35, 0)
-knobsBtn.Position = UDim2.new(0.05, 0, 0.55, 0)
-doorBtn.Position = UDim2.new(0.05, 0, 0.75, 0)
-
 -- =============================================================
--- 10. DRAG & DROP
+-- 11. DRAG & DROP
 -- =============================================================
 local drag = false
 local dx, dy, fx, fy
@@ -355,16 +452,16 @@ UserInputService.InputChanged:Connect(function(inp)
 end)
 
 -- =============================================================
--- 11. START
+-- 12. START
 -- =============================================================
 print("")
 print("============================================================")
-print("📍 TP-TEST SKRIPT GELADEN!")
+print("🔑 DOORS KEY-SAMMLER GELADEN!")
 print("============================================================")
-print("📌 Klicke auf einen Button, um zu teleportieren:")
-print("   🔑 TP zu Key     - Teleport zum KeyObtain")
-print("   💰 TP zu Knobs   - Teleport zu den Knobs")
-print("   🚪 TP zu Door    - Teleport zur Tür")
+print("📌 Klicke auf '▶ START'")
 print("")
-print("🔄 Offset: +1 nach oben (verhindert Bugging)")
+print("📋 SEQUENZ:")
+print("   1. Teleport zum Key (Offset 3)")
+print("   2. E drücken (Key aufheben)")
+print("   3. Teleport zur Tür (Offset 3)")
 print("============================================================")
